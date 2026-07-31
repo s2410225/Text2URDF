@@ -41,7 +41,7 @@ environment variable at them.
 | 1 | Expansion engine (transforms, namespacing, multi-module assembly) | implemented |
 | 2 | Validation layer | implemented |
 | 3 | Assembly layer (local LLM, two-stage generation, repair loop) | implemented |
-| 4 | Web UI | not started |
+| 4 | Web UI | not started (a headless SVG preview stands in) |
 | 5 | Advanced features (tree editing, ROS 2 export, catalog search) | not started |
 
 Everything except the web UI works from the command line today. Phases 0–2 need
@@ -77,6 +77,7 @@ src/urdfgen/
   llm/prompts.py              system prompt, per-stage instructions, error feedback
   llm/assemble.py             two-stage generation
   llm/repair.py               validate, feed errors back, retry
+  preview/svg.py              headless SVG rendering of a built URDF
   cli.py
 tests/
   stub_llm.py                 an OpenAI-compatible stub server
@@ -107,11 +108,25 @@ uv run urdfgen build-module leg_3dof_left_v1 -o leg.urdf
 # validate and build an AssemblySpec
 uv run urdfgen validate tests/fixtures/specs/quadruped_a.json
 uv run urdfgen build tests/fixtures/specs/quadruped_a.json -o quadruped.urdf
+
+# look at the result
+uv run urdfgen preview quadruped.urdf -o quadruped.svg
+uv run urdfgen preview quadruped.urdf -o crouched.svg --view side \
+    --joint leg_fl_knee_pitch=-1.2 --joint leg_fr_knee_pitch=1.2
 ```
 
 `validate` exits non-zero when it reports an error, and `build` refuses to
 write a URDF for a spec that fails validation. `--skip-validation` overrides
 that when you want to see what a rejected spec would have produced.
+
+`preview` draws a URDF as an SVG with no browser, GPU or display involved, so
+it works over SSH and in CI. `--view` takes `iso`, `front`, `side` or `top`;
+the last three are exactly axis-aligned, which means a robot that is symmetric
+about a plane must project symmetrically — an asymmetry in the picture is an
+asymmetry in the robot. `--joint NAME=VALUE` is repeatable and moves the robot
+into a pose, which is the fastest way to check that an assembly articulates the
+way it should. This is a complement to the interactive three.js viewer coming
+in phase 4, not a replacement for it.
 
 These need a local model (see below):
 

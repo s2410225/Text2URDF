@@ -163,6 +163,48 @@ def test_digest_prints_the_llm_summary(capsys: pytest.CaptureFixture[str]) -> No
     assert "ixx" not in output
 
 
+# --- preview ---------------------------------------------------------------
+
+
+def test_preview_writes_an_svg(tmp_path: Path) -> None:
+    urdf = tmp_path / "quad.urdf"
+    assert main(["build", str(SPECS / "quadruped_a.json"), "-o", str(urdf)]) == EXIT_OK
+
+    output = tmp_path / "quad.svg"
+    assert main(["preview", str(urdf), "-o", str(output)]) == EXIT_OK
+    assert output.read_text(encoding="utf-8").lstrip().startswith("<?xml")
+
+
+def test_preview_accepts_a_pose(tmp_path: Path) -> None:
+    urdf = tmp_path / "quad.urdf"
+    main(["build", str(SPECS / "quadruped_a.json"), "-o", str(urdf)])
+
+    rest = tmp_path / "rest.svg"
+    bent = tmp_path / "bent.svg"
+    main(["preview", str(urdf), "-o", str(rest)])
+    assert (
+        main(["preview", str(urdf), "-o", str(bent), "--joint", "leg_fl_knee_pitch=-1.2"])
+        == EXIT_OK
+    )
+    assert rest.read_text(encoding="utf-8") != bent.read_text(encoding="utf-8")
+
+
+def test_preview_rejects_a_malformed_joint_flag(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    urdf = tmp_path / "quad.urdf"
+    main(["build", str(SPECS / "quadruped_a.json"), "-o", str(urdf)])
+    capsys.readouterr()
+
+    assert main(["preview", str(urdf), "--joint", "leg_fl_knee_pitch"]) == EXIT_FAILED
+    assert "NAME=VALUE" in capsys.readouterr().err
+
+
+def test_preview_reports_a_missing_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["preview", str(tmp_path / "absent.urdf")]) == EXIT_FAILED
+    assert "cannot read" in capsys.readouterr().err
+
+
 # --- commands that need a local LLM ---------------------------------------
 
 

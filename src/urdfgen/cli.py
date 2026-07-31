@@ -22,6 +22,8 @@ from urdfgen.ir.assembly import AssemblySpec
 from urdfgen.llm.client import LLMError, LocalLLMClient
 from urdfgen.llm.config import LLMConfigError, load_config
 from urdfgen.llm.repair import MAX_ATTEMPTS, AssemblyOutcome, assemble_with_repair
+from urdfgen.preview import VIEWS, PreviewError, render_file
+from urdfgen.preview.svg import DEFAULT_WIDTH
 from urdfgen.validation import validate
 from urdfgen.validation.result import ValidationError, summarise
 
@@ -110,6 +112,27 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_build_options(generate)
     _add_llm_options(generate)
     generate.set_defaults(handler=_cmd_generate)
+
+    preview = subparsers.add_parser("preview", help="draw a URDF as an SVG")
+    preview.add_argument("urdf", type=Path, help="path to a URDF file")
+    preview.add_argument(
+        "-o", "--output", type=Path, default=None, help="output file (default: stdout)"
+    )
+    preview.add_argument(
+        "--joint",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="joint position, in radians or metres; repeatable (default: all zero)",
+    )
+    preview.add_argument(
+        "--view", default="iso", choices=sorted(VIEWS), help="camera direction (default: iso)"
+    )
+    preview.add_argument("--width", type=int, default=DEFAULT_WIDTH, help="image width in pixels")
+    preview.add_argument("--title", default=None, help="caption (default: the robot's name)")
+    preview.add_argument("--no-grid", action="store_true", help="omit the ground grid")
+    preview.add_argument("--no-axes", action="store_true", help="omit the origin axes")
+    preview.set_defaults(handler=_cmd_preview)
 
     return parser
 
@@ -276,6 +299,47 @@ def _cmd_generate(args: argparse.Namespace, catalog: Catalog) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_FAILED
     return _emit(robot, catalog, args, source_text=args.text)
+
+
+def _cmd_preview(args: argparse.Namespace, catalog: Catalog) -> int:
+    del catalog  # the URDF is self-contained; the catalog is not consulted
+    try:
+        configuration = _parse_joints(args.joint)
+        svg = render_file(
+            str(args.urdf),
+            configuration=configuration,
+            view=args.view,
+            width=args.width,
+            title=args.title,
+            show_grid=not args.no_grid,
+            show_axes=not args.no_axes,
+        )
+    except PreviewError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_FAILED
+
+    if args.output is None:
+        sys.stdout.write(svg)
+    else:
+        args.output.write_text(svg, encoding="utf-8")
+        print(f"wrote {args.output}", file=sys.stderr)
+    return EXIT_OK
+
+
+def _parse_joints(values: list[str]) -> dict[str, float]:
+    """Read repeated ``--joint name=value`` flags."""
+    configuration: dict[str, float] = {}
+    for item in values:
+        name, separator, raw = item.partition("=")
+        if not separator or not name.strip():
+            msg = f"expected NAME=VALUE, got {item!r}"
+            raise PreviewError(msg)
+        try:
+            configuration[name.strip()] = float(raw)
+        except ValueError as exc:
+            msg = f"joint {name.strip()!r} needs a number, got {raw!r}"
+            raise PreviewError(msg) from exc
+    return configuration
 
 
 def _run_assembly(args: argparse.Namespace, catalog: Catalog) -> AssemblyOutcome | None:
