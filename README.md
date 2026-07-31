@@ -19,7 +19,7 @@ Two constraints define the architecture and must not be weakened:
 module catalog (statically designed)
       │
 natural-language text
-      ↓  1. LLM assembly layer (tool use, catalog-ID enum constraints)
+      ↓  1. assembly layer (local LLM, catalog-ID enum constraints)
   AssemblySpec (module instances + port connections)
       ↓  2. validation layer (deterministic, no LLM)
   validated AssemblySpec  ──┐ on failure, errors are fed back to 1 (max 3 attempts)
@@ -28,6 +28,11 @@ natural-language text
       ↓  4. web 3D preview
 ```
 
+The model runs **locally**. There is no cloud API and no vendor SDK: the
+assembly layer speaks the OpenAI chat-completions protocol over plain HTTP, so
+Ollama, LM Studio, vLLM and llama.cpp's server all work by pointing an
+environment variable at them.
+
 ## Status
 
 | Phase | Scope | State |
@@ -35,13 +40,13 @@ natural-language text
 | 0 | Catalog foundation, single module → URDF | implemented |
 | 1 | Expansion engine (transforms, namespacing, multi-module assembly) | implemented |
 | 2 | Validation layer | implemented |
-| 3 | LLM assembly layer | not started |
+| 3 | Assembly layer (local LLM, two-stage generation, repair loop) | implemented |
 | 4 | Web UI | not started |
 | 5 | Advanced features (tree editing, ROS 2 export, catalog search) | not started |
 
-Phases 0–2 cover the entire deterministic core: everything works and is fully
-tested without an API key. `src/urdfgen/llm/`, `src/urdfgen/api/`,
-`builder/ros_package.py` and `web/` arrive in phases 3–5.
+Everything except the web UI works from the command line today. Phases 0–2 need
+nothing but Python; phase 3 needs a local model running somewhere.
+`src/urdfgen/api/`, `builder/ros_package.py` and `web/` arrive in phases 4–5.
 
 Mirroring (`ModuleInstance.mirror`) and parametric modules
 (`ModuleDef.parameters`) are listed under phase 5 in the spec, but the fields
@@ -66,8 +71,15 @@ src/urdfgen/
   builder/expression.py       arithmetic evaluator for parametric modules
   builder/inertia.py          primitive-shape inertia fallback
   builder/urdf.py             URDF XML construction
+  llm/config.py               endpoint settings, read from the environment
+  llm/client.py               the only network boundary
+  llm/schema_gen.py           enum-constrained JSON Schemas built from the catalog
+  llm/prompts.py              system prompt, per-stage instructions, error feedback
+  llm/assemble.py             two-stage generation
+  llm/repair.py               validate, feed errors back, retry
   cli.py
 tests/
+  stub_llm.py                 an OpenAI-compatible stub server
   fixtures/modules/           minimal catalog for edge cases
   fixtures/specs/             hand-written AssemblySpec documents
   fixtures/expected/          golden URDF output
@@ -79,13 +91,15 @@ row of the spec's acceptance table.
 
 ## Usage
 
+These need no model:
+
 ```bash
 uv sync --dev
 
 # browse the catalog
 uv run urdfgen list
 uv run urdfgen show leg_3dof_left_v1
-uv run urdfgen digest              # the summary the LLM layer will be given
+uv run urdfgen digest              # exactly what the model is shown
 
 # build a single module into URDF
 uv run urdfgen build-module leg_3dof_left_v1 -o leg.urdf
@@ -98,6 +112,78 @@ uv run urdfgen build tests/fixtures/specs/quadruped_a.json -o quadruped.urdf
 `validate` exits non-zero when it reports an error, and `build` refuses to
 write a URDF for a spec that fails validation. `--skip-validation` overrides
 that when you want to see what a rejected spec would have produced.
+
+These need a local model (see below):
+
+```bash
+uv run urdfgen assemble "4脚ロボットを作って" -o spec.json
+uv run urdfgen generate "a four-legged robot with an arm on top" -o robot.urdf
+```
+
+`assemble` stops at the `AssemblySpec` so you can read and edit it; `generate`
+goes straight to URDF. Both accept Japanese or English. If the model cannot
+produce something that validates in three attempts, `assemble` still writes the
+best spec it got — with a non-zero exit — so you can fix the last mile by hand.
+
+## Running a local model
+
+Set the endpoint and model, then use `assemble` or `generate`:
+
+```bash
+# Ollama
+ollama serve && ollama pull qwen2.5:7b
+export LLM_BASE_URL=http://localhost:11434/v1 LLM_MODEL=qwen2.5:7b
+
+# LM Studio (start the local server from the UI)
+export LLM_BASE_URL=http://localhost:1234/v1 LLM_MODEL=qwen2.5-7b-instruct
+
+# vLLM
+vllm serve Qwen/Qwen2.5-7B-Instruct --port 8000
+export LLM_BASE_URL=http://localhost:8000/v1 LLM_MODEL=Qwen/Qwen2.5-7B-Instruct
+
+# llama.cpp server
+llama-server -m model.gguf --port 8080
+export LLM_BASE_URL=http://localhost:8080/v1 LLM_MODEL=local
+```
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `LLM_MODEL` | **required** | Model name. Never hardcoded, so there is no fallback. |
+| `LLM_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible endpoint. |
+| `LLM_API_KEY` | `local` | Sent as a bearer token; most local servers ignore it. |
+| `LLM_TIMEOUT` | `120` | Seconds. Raise it for CPU inference. |
+| `LLM_TEMPERATURE` | `0.0` | Zero so the same request gives the same robot. |
+| `LLM_MAX_TOKENS` | `2048` | An `AssemblySpec` is a few dozen lines. |
+| `LLM_STRUCTURED_OUTPUT` | `auto` | `auto`, `json_schema` or `json_object`. |
+
+`--model` and `--base-url` override the first two per invocation.
+
+### How the model is constrained
+
+Generation happens in two calls (spec section 4.3). The first picks modules,
+with `module` restricted to a JSON Schema `enum` built from the catalog at
+runtime. The second is then given the exact list of ports those modules have —
+`body.leg_mount_fl`, `leg_fl.base`, … — and picks connections from that enum.
+Neither call can name a part or a port that does not exist.
+
+That is a strong constraint, not a guarantee. A small model can ignore an enum,
+so every field is re-checked afterwards, and the result goes through the same
+validation layer as a hand-written spec. Failures are fed back with the
+checker's own messages and retried up to three times.
+
+Local runtimes vary in how well they enforce `response_format`. If yours
+rejects schema-constrained generation the client falls back to plain JSON mode,
+moves the schema into the prompt, and warns you — because in that mode the
+catalog enum was a suggestion rather than a constraint. Set
+`LLM_STRUCTURED_OUTPUT=json_schema` to make an unsupporting server an error
+instead.
+
+### Choosing a model
+
+Anything that reliably emits JSON works. The schemas are kept deliberately flat
+and the prompts short, so 7B-class instruction-tuned models are enough; the
+model is choosing from a menu, not designing a robot. Larger models mostly buy
+better instance naming and better `notes`.
 
 ## Port role convention
 
@@ -135,9 +221,15 @@ The convention used by this catalog: the *receiving* side is `female` (body
 
 ## Deviations from the spec
 
-Two places where the implementation had to decide something the spec left open
-or contradicted itself:
-
+* **Local model instead of the Anthropic API.** The spec names the `anthropic`
+  SDK and Tool Use. This runs against a local OpenAI-compatible server over
+  `httpx` instead, with no vendor SDK. The constraints the spec cares about are
+  unchanged: the model still only emits an `AssemblySpec`, `module` is still an
+  enum over the catalog, port references are still restricted to real ports,
+  and everything still goes through the same validation and repair loop.
+  Two consequences of running locally are visible in the code — schema-
+  constrained generation is negotiated rather than assumed, and responses are
+  parsed defensively, because small models wrap JSON in prose and code fences.
 * **Port roles.** Resolved as described above; the spec's own example violates
   its own pairing rule.
 * **Connection joint types.** `Connection.joint` accepts `fixed` (the default),
@@ -145,6 +237,10 @@ or contradicted itself:
   rejected, because URDF requires limits for them and a connection has no
   source of limits. Articulation belongs inside a module, which is what the
   spec says anyway.
+* **Port references as single strings.** The IR keeps `PortRef` as an object,
+  but the model is asked for `"body.leg_mount_fl"` and the string is split
+  deterministically. One enum of legal values constrains far better than two
+  independent free-text fields, which matters more on a small model.
 
 One place where work was pulled forward from a later phase: `mirror` and
 `parameters` are fields of the phase-1 IR, so they are implemented rather than
@@ -159,7 +255,21 @@ uv run mypy
 uv run pytest -q
 ```
 
+The whole suite runs without a model. Tests of the assembly layer start a small
+OpenAI-compatible stub server (`tests/stub_llm.py`) and serve real HTTP, so the
+request bodies — including whether the enum constraints actually carry the
+catalog — are covered, not mocked away.
+
+To check against a real model instead:
+
+```bash
+LLM_BASE_URL=http://localhost:11434/v1 LLM_MODEL=qwen2.5:7b \
+    uv run pytest -m integration -q
+```
+
+Those are deselected by default and skip when `LLM_MODEL` is unset.
+
 `catalog`, `validation` and `builder` are written as side-effect-free pure
-functions. File I/O lives in `catalog/loader.py`; network access will live in
-`llm/`. Validation failures are returned as `ValidationError` lists, never
-raised.
+functions. File I/O lives in `catalog/loader.py` and network access in
+`llm/client.py`; nothing else touches either. Validation failures are returned
+as `ValidationError` lists, never raised.
