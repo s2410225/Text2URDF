@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+
+# Generated catalog index (rebuilt from module.yaml on load; see spec 2.2)
+modules/catalog.yaml
