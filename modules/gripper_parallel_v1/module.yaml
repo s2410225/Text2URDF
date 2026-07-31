@@ -1,0 +1,79 @@
+id: gripper_parallel_v1
+version: 1.0.0
+display_name: Parallel-jaw gripper
+category: gripper
+description: >
+  Two-finger parallel chuck. Each jaw is an independent prismatic joint with a
+  22 mm stroke, giving a 44 mm maximum opening.
+tags: [end_effector, parallel, prismatic]
+
+root_link: palm
+
+links:
+  - name: palm
+    material: aluminum
+    visual:
+      geometry: {shape: box, size: [0.06, 0.05, 0.04]}
+      origin: {xyz: [0, 0, 0.02], rpy: [0, 0, 0]}
+    collision:
+      geometry: {shape: box, size: [0.06, 0.05, 0.04]}
+      origin: {xyz: [0, 0, 0.02], rpy: [0, 0, 0]}
+    inertial:
+      mass: 0.18
+      origin: {xyz: [0, 0, 0.02], rpy: [0, 0, 0]}
+      inertia: {ixx: 0.0000615, iyy: 0.000078, izz: 0.0000915,
+                ixy: 0.0, ixz: 0.0, iyz: 0.0}
+
+  - name: finger_left
+    material: polymer_black
+    visual:
+      geometry: {shape: box, size: [0.012, 0.016, 0.06]}
+      origin: {xyz: [0, 0, 0.03], rpy: [0, 0, 0]}
+    collision:
+      geometry: {shape: box, size: [0.012, 0.016, 0.06]}
+      origin: {xyz: [0, 0, 0.03], rpy: [0, 0, 0]}
+    inertial:
+      mass: 0.035
+      origin: {xyz: [0, 0, 0.03], rpy: [0, 0, 0]}
+      inertia: {ixx: 0.000011246667, iyy: 0.00001092, izz: 0.0000011666667,
+                ixy: 0.0, ixz: 0.0, iyz: 0.0}
+
+  - name: finger_right
+    material: polymer_black
+    visual:
+      geometry: {shape: box, size: [0.012, 0.016, 0.06]}
+      origin: {xyz: [0, 0, 0.03], rpy: [0, 0, 0]}
+    collision:
+      geometry: {shape: box, size: [0.012, 0.016, 0.06]}
+      origin: {xyz: [0, 0, 0.03], rpy: [0, 0, 0]}
+    inertial:
+      mass: 0.035
+      origin: {xyz: [0, 0, 0.03], rpy: [0, 0, 0]}
+      inertia: {ixx: 0.000011246667, iyy: 0.00001092, izz: 0.0000011666667,
+                ixy: 0.0, ixz: 0.0, iyz: 0.0}
+
+joints:
+  # Both jaws open outwards, so positive travel widens the grip on either side.
+  - name: finger_left_slide
+    type: prismatic
+    parent: palm
+    child: finger_left
+    origin: {xyz: [0, 0.008, 0.04], rpy: [0, 0, 0]}
+    axis: [0, 1, 0]
+    limit: {lower: 0.0, upper: 0.022, effort: 60.0, velocity: 0.05}
+
+  - name: finger_right_slide
+    type: prismatic
+    parent: palm
+    child: finger_right
+    origin: {xyz: [0, -0.008, 0.04], rpy: [0, 0, 0]}
+    axis: [0, -1, 0]
+    limit: {lower: 0.0, upper: 0.022, effort: 60.0, velocity: 0.05}
+
+ports:
+  - name: base
+    role: male
+    interface: TOOL_M20
+    link: palm
+    origin: {xyz: [0, 0, 0], rpy: [0, 0, 0]}
+    description: Mounts onto an arm wrist flange.

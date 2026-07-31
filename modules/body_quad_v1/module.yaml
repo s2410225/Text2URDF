@@ -1,0 +1,58 @@
+id: body_quad_v1
+version: 1.0.0
+display_name: Quadruped chassis
+category: body
+description: >
+  Quadruped chassis, 350 x 180 x 60 mm, 2.1 kg. Carries four limb mounts on the
+  underside corners and one payload flange on the upper face.
+tags: [quadruped, chassis]
+
+root_link: chassis
+
+links:
+  - name: chassis
+    material: aluminum
+    visual:
+      geometry: {shape: box, size: [0.35, 0.18, 0.06]}
+    collision:
+      geometry: {shape: box, size: [0.35, 0.18, 0.06]}
+    inertial:
+      # Cuboid about its centre, appendix A: m(y^2+z^2)/12 etc. with m = 2.1.
+      mass: 2.1
+      origin: {xyz: [0, 0, 0], rpy: [0, 0, 0]}
+      inertia: {ixx: 0.0063, iyy: 0.0220675, izz: 0.0271075,
+                ixy: 0.0, ixz: 0.0, iyz: 0.0}
+
+joints: []
+
+ports:
+  - name: leg_mount_fl
+    role: female
+    interface: MOUNT_A40
+    link: chassis
+    origin: {xyz: [0.14, 0.09, -0.02], rpy: [0, 0, 0]}
+    description: Front-left limb mount.
+  - name: leg_mount_fr
+    role: female
+    interface: MOUNT_A40
+    link: chassis
+    origin: {xyz: [0.14, -0.09, -0.02], rpy: [0, 0, 0]}
+    description: Front-right limb mount.
+  - name: leg_mount_rl
+    role: female
+    interface: MOUNT_A40
+    link: chassis
+    origin: {xyz: [-0.14, 0.09, -0.02], rpy: [0, 0, 0]}
+    description: Rear-left limb mount.
+  - name: leg_mount_rr
+    role: female
+    interface: MOUNT_A40
+    link: chassis
+    origin: {xyz: [-0.14, -0.09, -0.02], rpy: [0, 0, 0]}
+    description: Rear-right limb mount.
+  - name: top
+    role: female
+    interface: TOOL_M20
+    link: chassis
+    origin: {xyz: [0, 0, 0.03], rpy: [0, 0, 0]}
+    description: Upper payload flange, for an arm or a sensor mast.

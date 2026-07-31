@@ -1,0 +1,17 @@
+# Shared appearance palette. Links reference materials by name only, so each
+# colour is defined exactly once for the whole catalog and the generated URDF
+# never repeats a <material> definition (spec section 6.3).
+
+materials:
+  - id: aluminum
+    rgba: [0.75, 0.76, 0.78, 1.0]
+    description: Machined aluminium structure.
+  - id: steel
+    rgba: [0.42, 0.44, 0.47, 1.0]
+    description: Steel brackets and fasteners.
+  - id: polymer_black
+    rgba: [0.15, 0.15, 0.17, 1.0]
+    description: Moulded polymer covers and pads.
+  - id: accent_orange
+    rgba: [0.88, 0.42, 0.12, 1.0]
+    description: High-visibility accent on moving parts.

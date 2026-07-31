@@ -1,0 +1,13 @@
+# Mechanical interfaces. Two ports may be joined only when their interface ids
+# match and their roles form a male/female pair.
+#
+# Convention: the receiving side of a joint is female, the side that plugs into
+# it is male.
+
+interfaces:
+  - id: MOUNT_A40
+    description: 40 mm square bolt pattern, 4x M4. Structural limb mount.
+  - id: TOOL_M20
+    description: 20 mm diameter tool flange. Payload and end-effector mount.
+  - id: FOOT_C25
+    description: 25 mm foot pad interface. Terminal ground contact.

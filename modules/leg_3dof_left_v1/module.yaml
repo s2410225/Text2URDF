@@ -1,0 +1,108 @@
+id: leg_3dof_left_v1
+version: 1.0.0
+display_name: 3-DOF leg (left)
+category: leg
+description: >
+  Three degrees of freedom: hip roll, hip pitch and knee pitch. The limb is
+  left/right asymmetric -- use leg_3dof_right_v1 on the right-hand mounts
+  rather than mirroring this one.
+tags: [quadruped, 3dof, left]
+
+root_link: hip_bracket
+
+links:
+  - name: hip_bracket
+    material: aluminum
+    visual:
+      geometry: {shape: box, size: [0.05, 0.06, 0.05]}
+      origin: {xyz: [0, 0.03, 0], rpy: [0, 0, 0]}
+    collision:
+      geometry: {shape: box, size: [0.05, 0.06, 0.05]}
+      origin: {xyz: [0, 0.03, 0], rpy: [0, 0, 0]}
+    inertial:
+      mass: 0.35
+      origin: {xyz: [0, 0.03, 0], rpy: [0, 0, 0]}
+      inertia: {ixx: 0.00017791667, iyy: 0.00014583333, izz: 0.00017791667,
+                ixy: 0.0, ixz: 0.0, iyz: 0.0}
+
+  - name: hip_yoke
+    material: steel
+    visual:
+      geometry: {shape: box, size: [0.05, 0.045, 0.05]}
+      origin: {xyz: [0, 0.0225, 0], rpy: [0, 0, 0]}
+    collision:
+      geometry: {shape: box, size: [0.05, 0.045, 0.05]}
+      origin: {xyz: [0, 0.0225, 0], rpy: [0, 0, 0]}
+    inertial:
+      mass: 0.22
+      origin: {xyz: [0, 0.0225, 0], rpy: [0, 0, 0]}
+      inertia: {ixx: 0.000082958333, iyy: 0.000091666667, izz: 0.000082958333,
+                ixy: 0.0, ixz: 0.0, iyz: 0.0}
+
+  - name: thigh
+    material: accent_orange
+    visual:
+      geometry: {shape: cylinder, radius: 0.022, length: 0.18}
+      origin: {xyz: [0, 0, -0.09], rpy: [0, 0, 0]}
+    collision:
+      geometry: {shape: cylinder, radius: 0.022, length: 0.18}
+      origin: {xyz: [0, 0, -0.09], rpy: [0, 0, 0]}
+    inertial:
+      # Cylinder about its centre, symmetry axis along Z (appendix A).
+      mass: 0.42
+      origin: {xyz: [0, 0, -0.09], rpy: [0, 0, 0]}
+      inertia: {ixx: 0.00118482, iyy: 0.00118482, izz: 0.00010164,
+                ixy: 0.0, ixz: 0.0, iyz: 0.0}
+
+  - name: shank
+    material: polymer_black
+    visual:
+      geometry: {shape: cylinder, radius: 0.018, length: 0.21}
+      origin: {xyz: [0, 0, -0.105], rpy: [0, 0, 0]}
+    collision:
+      geometry: {shape: cylinder, radius: 0.018, length: 0.21}
+      origin: {xyz: [0, 0, -0.105], rpy: [0, 0, 0]}
+    inertial:
+      mass: 0.28
+      origin: {xyz: [0, 0, -0.105], rpy: [0, 0, 0]}
+      inertia: {ixx: 0.00105168, iyy: 0.00105168, izz: 0.00004536,
+                ixy: 0.0, ixz: 0.0, iyz: 0.0}
+
+joints:
+  - name: hip_roll
+    type: revolute
+    parent: hip_bracket
+    child: hip_yoke
+    origin: {xyz: [0, 0.06, 0], rpy: [0, 0, 0]}
+    axis: [1, 0, 0]
+    limit: {lower: -0.79, upper: 0.79, effort: 24.0, velocity: 8.0}
+
+  - name: hip_pitch
+    type: revolute
+    parent: hip_yoke
+    child: thigh
+    origin: {xyz: [0, 0.045, 0], rpy: [0, 0, 0]}
+    axis: [0, 1, 0]
+    limit: {lower: -1.57, upper: 1.57, effort: 24.0, velocity: 8.0}
+
+  - name: knee_pitch
+    type: revolute
+    parent: thigh
+    child: shank
+    origin: {xyz: [0, 0, -0.18], rpy: [0, 0, 0]}
+    axis: [0, 1, 0]
+    limit: {lower: -2.36, upper: 0.0, effort: 24.0, velocity: 8.0}
+
+ports:
+  - name: base
+    role: male
+    interface: MOUNT_A40
+    link: hip_bracket
+    origin: {xyz: [0, 0, 0], rpy: [0, 0, 0]}
+    description: Attaches to a chassis limb mount.
+  - name: foot
+    role: male
+    interface: FOOT_C25
+    link: shank
+    origin: {xyz: [0, 0, -0.21], rpy: [0, 0, 0]}
+    description: Ground contact point, for an optional foot pad.
