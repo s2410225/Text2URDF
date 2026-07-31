@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import io
+import json
 from pathlib import Path
 
 import pytest
 import yourdfpy
 
 from conftest import SPECS
+from stub_llm import Reply, serving
 from urdfgen.cli import EXIT_FAILED, EXIT_OK, EXIT_USAGE, main
 
 
@@ -159,3 +161,149 @@ def test_digest_prints_the_llm_summary(capsys: pytest.CaptureFixture[str]) -> No
     output = capsys.readouterr().out
     assert "## Available modules" in output
     assert "ixx" not in output
+
+
+# --- commands that need a local LLM ---------------------------------------
+
+
+def test_assemble_writes_a_spec(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    output = tmp_path / "spec.json"
+    with serving(quad_replies()) as stub:
+        exit_code = main(
+            [
+                "assemble",
+                "4脚ロボットを作って",
+                "-o",
+                str(output),
+                "--model",
+                "stub-model",
+                "--base-url",
+                stub.base_url,
+            ]
+        )
+
+    assert exit_code == EXIT_OK
+    spec = json.loads(output.read_text(encoding="utf-8"))
+    assert spec["root"] == "body"
+    assert len(spec["modules"]) == 5
+
+
+def test_generate_writes_a_urdf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    output = tmp_path / "robot.urdf"
+    with serving(quad_replies()) as stub:
+        exit_code = main(
+            [
+                "generate",
+                "a four-legged robot",
+                "-o",
+                str(output),
+                "--model",
+                "stub-model",
+                "--base-url",
+                stub.base_url,
+            ]
+        )
+
+    assert exit_code == EXIT_OK
+    parsed = yourdfpy.URDF.load(
+        io.BytesIO(output.read_bytes()),
+        build_scene_graph=False,
+        build_collision_scene_graph=False,
+        load_meshes=False,
+        load_collision_meshes=False,
+    )
+    assert len(parsed.link_map) == 17
+    assert sum(1 for joint in parsed.joint_map.values() if joint.type != "fixed") == 12
+
+
+def test_generate_records_the_request_in_the_urdf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    output = tmp_path / "robot.urdf"
+    with serving(quad_replies()) as stub:
+        main(
+            [
+                "generate",
+                "a four-legged robot",
+                "-o",
+                str(output),
+                "--model",
+                "stub-model",
+                "--base-url",
+                stub.base_url,
+            ]
+        )
+    assert "input: a four-legged robot" in output.read_text(encoding="utf-8")
+
+
+def test_missing_model_is_reported(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    assert main(["assemble", "a robot"]) == EXIT_FAILED
+    assert "no model configured" in capsys.readouterr().err
+
+
+def test_unreachable_server_is_reported(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("LLM_TIMEOUT", "2")
+    assert (
+        main(["assemble", "a robot", "--model", "m", "--base-url", "http://127.0.0.1:1/v1"])
+        == EXIT_FAILED
+    )
+    assert "cannot reach a local LLM" in capsys.readouterr().err
+
+
+def test_assemble_still_writes_a_spec_that_failed_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Spec 4.5: hand back something editable rather than nothing at all."""
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    output = tmp_path / "spec.json"
+    with serving(reused_port_replies()) as stub:
+        exit_code = main(
+            ["assemble", "a robot", "-o", str(output), "--model", "m", "--base-url", stub.base_url]
+        )
+
+    assert exit_code == EXIT_FAILED
+    assert json.loads(output.read_text(encoding="utf-8"))["modules"]
+    assert "port_reused" in capsys.readouterr().out
+
+
+def test_generate_refuses_to_build_an_invalid_assembly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    output = tmp_path / "robot.urdf"
+    with serving(reused_port_replies()) as stub:
+        exit_code = main(
+            ["generate", "a robot", "-o", str(output), "--model", "m", "--base-url", stub.base_url]
+        )
+
+    assert exit_code == EXIT_FAILED
+    assert not output.exists()
+    assert "no valid assembly" in capsys.readouterr().err
+
+
+def quad_replies() -> list[Reply]:
+    from test_llm import QUAD_CONNECTIONS, QUAD_SELECTION
+
+    return [Reply.json_object(QUAD_SELECTION), Reply.json_object(QUAD_CONNECTIONS)]
+
+
+def reused_port_replies() -> list[Reply]:
+    """An assembly that always puts two legs on the same mount."""
+    from test_llm import QUAD_SELECTION
+
+    wrong = {
+        "root": "body",
+        "connections": [
+            {"parent": "body.leg_mount_fl", "child": "leg_fl.base"},
+            {"parent": "body.leg_mount_fl", "child": "leg_fr.base"},
+        ],
+    }
+    return [Reply.json_object(QUAD_SELECTION), Reply.json_object(wrong)] * 3

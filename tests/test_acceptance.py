@@ -20,10 +20,14 @@ import pytest
 import yourdfpy
 
 from conftest import SPECS, load_spec
+from stub_llm import Reply, StubServer, serving
 from urdfgen.builder.expand import expand
 from urdfgen.builder.urdf import build_urdf_string
 from urdfgen.catalog.loader import Catalog
 from urdfgen.ir.assembly import AssemblySpec
+from urdfgen.llm.client import LocalLLMClient
+from urdfgen.llm.config import LLMConfig
+from urdfgen.llm.repair import AssemblyOutcome, assemble_with_repair
 from urdfgen.validation import ValidationError, errors_only, validate, warnings_only
 
 
@@ -238,3 +242,70 @@ def test_case_8_double_connection_is_an_error(catalog: Catalog) -> None:
 def test_invalid_cases_are_rejected(case: Case, catalog: Catalog) -> None:
     spec: AssemblySpec = load_spec(case.spec_name)
     assert errors_only(validate(spec, catalog)) != [], f"case {case.number} was accepted"
+
+
+# --- the same table, driven from text through the assembly layer ----------
+
+
+def test_valid_cases_run_end_to_end_from_text(case: Case, catalog: Catalog) -> None:
+    """Text in, URDF out, with the LLM scripted to answer as the table expects.
+
+    Spec section 11 wants the acceptance cases to start from a natural-language
+    request. The model is stubbed rather than mocked, so the whole path runs:
+    prompt construction, schema-constrained request, response parsing,
+    validation and expansion.
+    """
+    spec = load_spec(case.spec_name)
+    with serving(replies_for(spec)) as stub:
+        outcome = run_assembly(stub, catalog, case.request)
+
+    assert outcome.succeeded, f"case {case.number} ({case.request}): {outcome.findings}"
+    assert outcome.attempts == 1
+    assert outcome.spec is not None
+    assert [module.module for module in outcome.spec.modules] == [
+        module.module for module in spec.modules
+    ]
+
+    robot = expand(outcome.spec, catalog)
+    assert len(robot.movable_joints) == len(expand(spec, catalog).movable_joints)
+
+
+def test_case_5_missing_module_reaches_the_user_from_text(catalog: Catalog) -> None:
+    """The 'no such module' note has to survive all the way out (spec 4.4)."""
+    spec = load_spec("missing_module")
+    with serving(replies_for(spec)) as stub:
+        outcome = run_assembly(stub, catalog, "a four-legged robot with a lidar mast")
+
+    assert outcome.succeeded
+    assert outcome.spec is not None
+    assert outcome.spec.notes is not None
+    assert "lidar" in outcome.spec.notes.lower()
+
+
+def replies_for(spec: AssemblySpec) -> list[Reply]:
+    """Script the two stages so the stub answers with ``spec``."""
+    selection = {
+        "name": spec.name,
+        "modules": [
+            {"id": module.id, "module": module.module, "mirror": module.mirror}
+            for module in spec.modules
+        ],
+        "notes": spec.notes or "",
+    }
+    plan = {
+        "root": spec.root,
+        "connections": [
+            {
+                "parent": f"{connection.parent.instance}.{connection.parent.port}",
+                "child": f"{connection.child.instance}.{connection.child.port}",
+            }
+            for connection in spec.connections
+        ],
+    }
+    return [Reply.json_object(selection), Reply.json_object(plan)]
+
+
+def run_assembly(stub: StubServer, catalog: Catalog, text: str) -> AssemblyOutcome:
+    config = LLMConfig(model="stub-model", base_url=stub.base_url, timeout=10.0)
+    with LocalLLMClient(config) as client:
+        return assemble_with_repair(text, catalog, client)
