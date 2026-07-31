@@ -1,0 +1,42 @@
+# A single unit-cube link with two sockets, used as the root of test assemblies.
+# Every dimension is a round number so expected transforms can be computed by
+# hand in the tests.
+id: probe_base_v1
+version: 1.0.0
+display_name: Probe base
+category: body
+description: Unit cube with two sockets, one of each test interface.
+tags: [test]
+
+root_link: cube
+
+links:
+  - name: cube
+    visual:
+      geometry: {shape: box, size: [1.0, 1.0, 1.0]}
+    collision:
+      geometry: {shape: box, size: [1.0, 1.0, 1.0]}
+    inertial:
+      mass: 6.0
+      inertia: {ixx: 1.0, iyy: 1.0, izz: 1.0}
+
+joints: []
+
+ports:
+  - name: socket_a
+    role: female
+    interface: TEST_A
+    link: cube
+    origin: {xyz: [2.0, 0, 0], rpy: [0, 0, 0]}
+  - name: socket_b
+    role: female
+    interface: TEST_B
+    link: cube
+    origin: {xyz: [0, 2.0, 0], rpy: [0, 0, 0]}
+  - name: socket_turned
+    role: female
+    interface: TEST_A
+    link: cube
+    # Yawed a quarter turn, so composing this port exercises rotation rather
+    # than just translation.
+    origin: {xyz: [0, 0, 2.0], rpy: [0, 0, 1.5707963267948966]}

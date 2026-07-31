@@ -1,0 +1,5 @@
+interfaces:
+  - id: TEST_A
+    description: Test interface A.
+  - id: TEST_B
+    description: Test interface B, deliberately incompatible with A.

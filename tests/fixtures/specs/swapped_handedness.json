@@ -1,0 +1,69 @@
+{
+  "name": "swapped_handedness",
+  "root": "body",
+  "modules": [
+    {
+      "id": "body",
+      "module": "body_quad_v1"
+    },
+    {
+      "id": "leg_fl",
+      "module": "leg_3dof_left_v1"
+    },
+    {
+      "id": "leg_fr",
+      "module": "leg_3dof_left_v1"
+    },
+    {
+      "id": "leg_rl",
+      "module": "leg_3dof_left_v1"
+    },
+    {
+      "id": "leg_rr",
+      "module": "leg_3dof_left_v1"
+    }
+  ],
+  "connections": [
+    {
+      "parent": {
+        "instance": "body",
+        "port": "leg_mount_fl"
+      },
+      "child": {
+        "instance": "leg_fl",
+        "port": "base"
+      }
+    },
+    {
+      "parent": {
+        "instance": "body",
+        "port": "leg_mount_fr"
+      },
+      "child": {
+        "instance": "leg_fr",
+        "port": "base"
+      }
+    },
+    {
+      "parent": {
+        "instance": "body",
+        "port": "leg_mount_rl"
+      },
+      "child": {
+        "instance": "leg_rl",
+        "port": "base"
+      }
+    },
+    {
+      "parent": {
+        "instance": "body",
+        "port": "leg_mount_rr"
+      },
+      "child": {
+        "instance": "leg_rr",
+        "port": "base"
+      }
+    }
+  ],
+  "notes": "Deliberately wrong: the left-hand leg module is used on both right-hand mounts."
+}

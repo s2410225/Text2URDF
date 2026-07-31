@@ -1,0 +1,27 @@
+{
+  "name": "bad_interface",
+  "root": "body",
+  "modules": [
+    {
+      "id": "body",
+      "module": "body_quad_v1"
+    },
+    {
+      "id": "leg_top",
+      "module": "leg_3dof_left_v1"
+    }
+  ],
+  "connections": [
+    {
+      "parent": {
+        "instance": "body",
+        "port": "top"
+      },
+      "child": {
+        "instance": "leg_top",
+        "port": "base"
+      }
+    }
+  ],
+  "notes": "Deliberately wrong: the chassis top flange is TOOL_M20 but a leg base is MOUNT_A40."
+}

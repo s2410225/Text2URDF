@@ -1,0 +1,42 @@
+# Loads cleanly (the schema only checks structure) but is physically
+# impossible: the principal moments violate the triangle inequality, and the
+# second link's tensor is not positive definite. The validation layer is what
+# has to catch this.
+id: probe_bad_inertia_v1
+version: 1.0.0
+display_name: Probe with impossible inertia
+category: adapter
+description: Deliberately unphysical inertia tensors, for the physics checks.
+tags: [test, invalid]
+
+root_link: heavy
+
+links:
+  - name: heavy
+    visual:
+      geometry: {shape: box, size: [1.0, 1.0, 1.0]}
+    inertial:
+      mass: 1.0
+      # 1 + 1 < 10: no rigid body has these principal moments.
+      inertia: {ixx: 1.0, iyy: 1.0, izz: 10.0}
+
+  - name: negative
+    visual:
+      geometry: {shape: box, size: [1.0, 1.0, 1.0]}
+    inertial:
+      mass: 1.0
+      inertia: {ixx: -1.0, iyy: 1.0, izz: 1.0}
+
+joints:
+  - name: weld
+    type: fixed
+    parent: heavy
+    child: negative
+    origin: {xyz: [0, 0, 5.0], rpy: [0, 0, 0]}
+
+ports:
+  - name: plug
+    role: male
+    interface: TEST_A
+    link: heavy
+    origin: {xyz: [0, 0, 0], rpy: [0, 0, 0]}

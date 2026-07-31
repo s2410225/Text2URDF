@@ -1,0 +1,52 @@
+# A parametric module. Every field the parameter touches is listed in
+# 'affects', so the authored values below are always overwritten at expansion
+# time -- dimensions are never expressed as a mesh scale (spec section 2.3).
+id: probe_param_v1
+version: 1.0.0
+display_name: Probe telescope
+category: adapter
+description: Single link whose length, mass and port position follow one parameter.
+tags: [test, parametric]
+
+root_link: rod
+
+links:
+  - name: rod
+    visual:
+      geometry: {shape: cylinder, radius: 0.05, length: 1.0}
+      origin: {xyz: [0, 0, 0.5], rpy: [0, 0, 0]}
+    collision:
+      geometry: {shape: cylinder, radius: 0.05, length: 1.0}
+      origin: {xyz: [0, 0, 0.5], rpy: [0, 0, 0]}
+    inertial:
+      mass: 1.0
+      origin: {xyz: [0, 0, 0.5], rpy: [0, 0, 0]}
+
+joints: []
+
+ports:
+  - name: plug
+    role: male
+    interface: TEST_A
+    link: rod
+    origin: {xyz: [0, 0, 0], rpy: [0, 0, 0]}
+  - name: tip
+    role: female
+    interface: TEST_A
+    link: rod
+    origin: {xyz: [0, 0, 1.0], rpy: [0, 0, 0]}
+
+parameters:
+  - name: length
+    unit: m
+    default: 1.0
+    min: 0.5
+    max: 2.0
+    affects:
+      - {target: "link:rod.visual.geometry.length", expr: "value"}
+      - {target: "link:rod.visual.origin.xyz.z", expr: "value / 2"}
+      - {target: "link:rod.collision.geometry.length", expr: "value"}
+      - {target: "link:rod.collision.origin.xyz.z", expr: "value / 2"}
+      - {target: "link:rod.inertial.origin.xyz.z", expr: "value / 2"}
+      - {target: "link:rod.inertial.mass", expr: "1.0 * value"}
+      - {target: "port:tip.origin.xyz.z", expr: "value"}

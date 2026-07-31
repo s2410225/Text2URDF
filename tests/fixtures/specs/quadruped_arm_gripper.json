@@ -1,0 +1,97 @@
+{
+  "name": "quadruped_arm_gripper",
+  "root": "body",
+  "modules": [
+    {
+      "id": "body",
+      "module": "body_quad_v1"
+    },
+    {
+      "id": "leg_fl",
+      "module": "leg_3dof_left_v1"
+    },
+    {
+      "id": "leg_fr",
+      "module": "leg_3dof_right_v1"
+    },
+    {
+      "id": "leg_rl",
+      "module": "leg_3dof_left_v1"
+    },
+    {
+      "id": "leg_rr",
+      "module": "leg_3dof_right_v1"
+    },
+    {
+      "id": "arm_main",
+      "module": "arm_3dof_v1"
+    },
+    {
+      "id": "gripper",
+      "module": "gripper_parallel_v1"
+    }
+  ],
+  "connections": [
+    {
+      "parent": {
+        "instance": "body",
+        "port": "leg_mount_fl"
+      },
+      "child": {
+        "instance": "leg_fl",
+        "port": "base"
+      }
+    },
+    {
+      "parent": {
+        "instance": "body",
+        "port": "leg_mount_fr"
+      },
+      "child": {
+        "instance": "leg_fr",
+        "port": "base"
+      }
+    },
+    {
+      "parent": {
+        "instance": "body",
+        "port": "leg_mount_rl"
+      },
+      "child": {
+        "instance": "leg_rl",
+        "port": "base"
+      }
+    },
+    {
+      "parent": {
+        "instance": "body",
+        "port": "leg_mount_rr"
+      },
+      "child": {
+        "instance": "leg_rr",
+        "port": "base"
+      }
+    },
+    {
+      "parent": {
+        "instance": "body",
+        "port": "top"
+      },
+      "child": {
+        "instance": "arm_main",
+        "port": "base"
+      }
+    },
+    {
+      "parent": {
+        "instance": "arm_main",
+        "port": "tool"
+      },
+      "child": {
+        "instance": "gripper",
+        "port": "base"
+      }
+    }
+  ],
+  "notes": "The gripper attaches to the arm wrist flange, so the two prismatic finger joints are the distal degrees of freedom."
+}

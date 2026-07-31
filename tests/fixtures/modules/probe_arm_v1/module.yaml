@@ -1,0 +1,57 @@
+# Two links and one revolute joint. The plug port is offset from the root link
+# so the connection transform has to invert a non-identity pose.
+id: probe_arm_v1
+version: 1.0.0
+display_name: Probe arm
+category: arm
+description: Two-link probe with a single revolute joint.
+tags: [test]
+
+root_link: stem
+
+links:
+  - name: stem
+    visual:
+      geometry: {shape: box, size: [1.0, 1.0, 1.0]}
+    collision:
+      geometry: {shape: box, size: [1.0, 1.0, 1.0]}
+    inertial:
+      mass: 2.0
+      inertia: {ixx: 0.5, iyy: 0.5, izz: 0.5}
+
+  - name: tip
+    visual:
+      geometry: {shape: box, size: [1.0, 1.0, 1.0]}
+    collision:
+      geometry: {shape: box, size: [1.0, 1.0, 1.0]}
+    # No inertia tensor: primitive-only links may omit it and fall back to the
+    # appendix A formulas.
+    inertial:
+      mass: 12.0
+
+joints:
+  - name: hinge
+    type: revolute
+    parent: stem
+    child: tip
+    origin: {xyz: [0, 0, 3.0], rpy: [0, 0, 0]}
+    axis: [0, 1, 0]
+    limit: {lower: -1.0, upper: 2.0, effort: 5.0, velocity: 1.0}
+
+ports:
+  - name: plug
+    role: male
+    interface: TEST_A
+    link: stem
+    origin: {xyz: [0, 0, -1.0], rpy: [0, 0, 0]}
+  - name: plug_b
+    role: male
+    interface: TEST_B
+    link: stem
+    origin: {xyz: [0, 0, -1.0], rpy: [0, 0, 0]}
+  - name: far_plug
+    role: male
+    interface: TEST_A
+    link: tip
+    # Deliberately not on root_link, so the child-port rule can be exercised.
+    origin: {xyz: [0, 0, 1.0], rpy: [0, 0, 0]}

@@ -1,0 +1,41 @@
+{
+  "name": "biped",
+  "root": "body",
+  "modules": [
+    {
+      "id": "body",
+      "module": "body_quad_v1"
+    },
+    {
+      "id": "leg_fl",
+      "module": "leg_3dof_left_v1"
+    },
+    {
+      "id": "leg_fr",
+      "module": "leg_3dof_right_v1"
+    }
+  ],
+  "connections": [
+    {
+      "parent": {
+        "instance": "body",
+        "port": "leg_mount_fl"
+      },
+      "child": {
+        "instance": "leg_fl",
+        "port": "base"
+      }
+    },
+    {
+      "parent": {
+        "instance": "body",
+        "port": "leg_mount_fr"
+      },
+      "child": {
+        "instance": "leg_fr",
+        "port": "base"
+      }
+    }
+  ],
+  "notes": "No dedicated biped chassis exists, so the quadruped chassis is used with only the front pair of mounts populated. The two rear mounts are left free on purpose."
+}

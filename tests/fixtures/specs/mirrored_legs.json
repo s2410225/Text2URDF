@@ -1,0 +1,71 @@
+{
+  "name": "mirrored_legs",
+  "root": "body",
+  "modules": [
+    {
+      "id": "body",
+      "module": "body_quad_v1"
+    },
+    {
+      "id": "leg_fl",
+      "module": "leg_3dof_left_v1"
+    },
+    {
+      "id": "leg_fr",
+      "module": "leg_3dof_left_v1",
+      "mirror": "y"
+    },
+    {
+      "id": "leg_rl",
+      "module": "leg_3dof_left_v1"
+    },
+    {
+      "id": "leg_rr",
+      "module": "leg_3dof_left_v1",
+      "mirror": "y"
+    }
+  ],
+  "connections": [
+    {
+      "parent": {
+        "instance": "body",
+        "port": "leg_mount_fl"
+      },
+      "child": {
+        "instance": "leg_fl",
+        "port": "base"
+      }
+    },
+    {
+      "parent": {
+        "instance": "body",
+        "port": "leg_mount_fr"
+      },
+      "child": {
+        "instance": "leg_fr",
+        "port": "base"
+      }
+    },
+    {
+      "parent": {
+        "instance": "body",
+        "port": "leg_mount_rl"
+      },
+      "child": {
+        "instance": "leg_rl",
+        "port": "base"
+      }
+    },
+    {
+      "parent": {
+        "instance": "body",
+        "port": "leg_mount_rr"
+      },
+      "child": {
+        "instance": "leg_rr",
+        "port": "base"
+      }
+    }
+  ],
+  "notes": "Mirroring is used instead of the dedicated right-hand module, which the validator warns about."
+}
