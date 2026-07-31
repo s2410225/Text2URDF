@@ -11,6 +11,9 @@ dependencies = [
     "PyYAML>=6.0",
     "yourdfpy>=0.0.56",
     "trimesh>=4.0",
+    # The assembly layer talks to a local OpenAI-compatible server over plain
+    # HTTP; no vendor SDK is involved.
+    "httpx>=0.27",
 ]
 
 [project.scripts]
