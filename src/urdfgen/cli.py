@@ -1,7 +1,9 @@
-"""Command line entry point for the deterministic half of the pipeline.
+"""Command line entry point.
 
-Text-to-assembly (the LLM layer) is not wired up here yet; these commands work
-on catalog modules and hand-written ``AssemblySpec`` documents.
+``list`` / ``show`` / ``digest`` / ``index`` inspect the catalog, ``build`` and
+``validate`` work on ``AssemblySpec`` documents, and ``assemble`` / ``generate``
+start from natural language and need a local LLM (see ``llm/config.py`` for the
+environment variables).
 """
 
 from __future__ import annotations
@@ -17,8 +19,11 @@ from urdfgen.builder.expand import ExpandedRobot, ExpansionError, expand, expand
 from urdfgen.builder.urdf import DEFAULT_PACKAGE_NAME, build_urdf_string
 from urdfgen.catalog.loader import Catalog, CatalogError, load_catalog, write_catalog_index
 from urdfgen.ir.assembly import AssemblySpec
+from urdfgen.llm.client import LLMError, LocalLLMClient
+from urdfgen.llm.config import LLMConfigError, load_config
+from urdfgen.llm.repair import MAX_ATTEMPTS, AssemblyOutcome, assemble_with_repair
 from urdfgen.validation import validate
-from urdfgen.validation.result import ValidationError
+from urdfgen.validation.result import ValidationError, summarise
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -88,6 +93,24 @@ def _build_parser() -> argparse.ArgumentParser:
     check.add_argument("spec", type=Path, help="path to an AssemblySpec JSON file")
     check.set_defaults(handler=_cmd_validate)
 
+    assemble = subparsers.add_parser(
+        "assemble", help="turn a natural-language request into an AssemblySpec"
+    )
+    assemble.add_argument("text", help="what to build, in Japanese or English")
+    assemble.add_argument(
+        "-o", "--output", type=Path, default=None, help="output file (default: stdout)"
+    )
+    _add_llm_options(assemble)
+    assemble.set_defaults(handler=_cmd_assemble)
+
+    generate = subparsers.add_parser(
+        "generate", help="turn a natural-language request straight into a URDF"
+    )
+    generate.add_argument("text", help="what to build, in Japanese or English")
+    _add_build_options(generate)
+    _add_llm_options(generate)
+    generate.set_defaults(handler=_cmd_generate)
+
     return parser
 
 
@@ -97,6 +120,17 @@ def _add_build_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--package", default=DEFAULT_PACKAGE_NAME, help="ROS package name used in mesh URIs"
+    )
+
+
+def _add_llm_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--model", default=None, help="overrides LLM_MODEL")
+    parser.add_argument("--base-url", default=None, help="overrides LLM_BASE_URL")
+    parser.add_argument(
+        "--attempts",
+        type=int,
+        default=MAX_ATTEMPTS,
+        help=f"how many times to retry after validation errors (default: {MAX_ATTEMPTS})",
     )
 
 
@@ -199,6 +233,79 @@ def _cmd_validate(args: argparse.Namespace, catalog: Catalog) -> int:
     warnings = len(findings) - errors
     print(f"{errors} error(s), {warnings} warning(s)")
     return EXIT_FAILED if errors else EXIT_OK
+
+
+def _cmd_assemble(args: argparse.Namespace, catalog: Catalog) -> int:
+    outcome = _run_assembly(args, catalog)
+    if outcome is None:
+        return EXIT_FAILED
+
+    _report_outcome(outcome)
+    if outcome.spec is None:
+        return EXIT_FAILED
+
+    document = outcome.spec.model_dump_json(indent=2, exclude_none=True) + "\n"
+    if args.output is None:
+        sys.stdout.write(document)
+    else:
+        args.output.write_text(document, encoding="utf-8")
+        print(f"wrote {args.output}", file=sys.stderr)
+
+    # A spec that still has errors is written out anyway -- it is the starting
+    # point for a manual fix -- but the exit code says it is not usable yet.
+    return EXIT_OK if outcome.succeeded else EXIT_FAILED
+
+
+def _cmd_generate(args: argparse.Namespace, catalog: Catalog) -> int:
+    outcome = _run_assembly(args, catalog)
+    if outcome is None:
+        return EXIT_FAILED
+
+    _report_outcome(outcome)
+    if outcome.spec is None or not outcome.succeeded:
+        print(
+            "error: no valid assembly was produced; run 'urdfgen assemble' to get "
+            "the partial spec and edit it by hand",
+            file=sys.stderr,
+        )
+        return EXIT_FAILED
+
+    try:
+        robot = expand(outcome.spec, catalog)
+    except ExpansionError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_FAILED
+    return _emit(robot, catalog, args, source_text=args.text)
+
+
+def _run_assembly(args: argparse.Namespace, catalog: Catalog) -> AssemblyOutcome | None:
+    """Set up the client and run the repair loop. ``None`` means it never started."""
+    try:
+        config = load_config(model=args.model, base_url=args.base_url)
+    except LLMConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return None
+
+    print(f"using {config.model} at {config.base_url}", file=sys.stderr)
+    try:
+        with LocalLLMClient(config) as client:
+            return assemble_with_repair(args.text, catalog, client, max_attempts=args.attempts)
+    except LLMError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return None
+
+
+def _report_outcome(outcome: AssemblyOutcome) -> None:
+    if outcome.spec is not None and outcome.spec.notes:
+        print(f"notes: {outcome.spec.notes}", file=sys.stderr)
+    if not outcome.schema_enforced:
+        print(
+            "warning: the server did not constrain generation to the JSON schema, "
+            "so module ids were only suggested, not enforced",
+            file=sys.stderr,
+        )
+    _print_findings(outcome.findings)
+    print(f"{summarise(outcome.findings)} after {outcome.attempts} attempt(s)", file=sys.stderr)
 
 
 # --- helpers --------------------------------------------------------------
