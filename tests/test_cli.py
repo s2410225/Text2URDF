@@ -163,6 +163,29 @@ def test_digest_prints_the_llm_summary(capsys: pytest.CaptureFixture[str]) -> No
     assert "ixx" not in output
 
 
+# --- assembly page ---------------------------------------------------------
+
+
+def test_ui_writes_a_self_contained_page(tmp_path: Path) -> None:
+    output = tmp_path / "assembly.html"
+    assert main(["ui", "-o", str(output)]) == EXIT_OK
+
+    page = output.read_text(encoding="utf-8")
+    assert "body_quad_v1" in page
+    assert "http://" not in page
+
+
+def test_ui_writes_to_stdout(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["ui"]) == EXIT_OK
+    assert "<title>" in capsys.readouterr().out
+
+
+def test_ui_takes_a_title(tmp_path: Path) -> None:
+    output = tmp_path / "assembly.html"
+    main(["ui", "-o", str(output), "--title", "GARAGE"])
+    assert "<title>GARAGE</title>" in output.read_text(encoding="utf-8")
+
+
 # --- preview ---------------------------------------------------------------
 
 

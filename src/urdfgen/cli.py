@@ -30,6 +30,8 @@ from urdfgen.preview import (
     render_file,
     save,
 )
+from urdfgen.ui import render_page
+from urdfgen.ui.page import DEFAULT_TITLE, UIError
 from urdfgen.validation import validate
 from urdfgen.validation.result import ValidationError, summarise
 
@@ -118,6 +120,11 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_build_options(generate)
     _add_llm_options(generate)
     generate.set_defaults(handler=_cmd_generate)
+
+    ui = subparsers.add_parser("ui", help="generate the standalone assembly page")
+    ui.add_argument("-o", "--output", type=Path, default=None, help="output file (default: stdout)")
+    ui.add_argument("--title", default=DEFAULT_TITLE, help="page title")
+    ui.set_defaults(handler=_cmd_ui)
 
     preview = subparsers.add_parser("preview", help="draw a URDF as an SVG or PNG")
     preview.add_argument("urdf", type=Path, help="path to a URDF file")
@@ -316,6 +323,21 @@ def _cmd_generate(args: argparse.Namespace, catalog: Catalog) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_FAILED
     return _emit(robot, catalog, args, source_text=args.text)
+
+
+def _cmd_ui(args: argparse.Namespace, catalog: Catalog) -> int:
+    try:
+        page = render_page(catalog, title=args.title)
+    except UIError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_FAILED
+
+    if args.output is None:
+        sys.stdout.write(page)
+    else:
+        args.output.write_text(page, encoding="utf-8")
+        print(f"wrote {args.output} ({len(page):,} bytes)", file=sys.stderr)
+    return EXIT_OK
 
 
 def _cmd_preview(args: argparse.Namespace, catalog: Catalog) -> int:

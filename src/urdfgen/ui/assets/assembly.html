@@ -1,0 +1,1262 @@
+<title>__TITLE__</title>
+<style>
+  :root {
+    --void: #07090c;
+    --panel: #0e1218;
+    --panel-hi: #131a23;
+    --rule: #1b2531;
+    --rule-hi: #2c3a4a;
+    --ice: #9fb4c6;
+    --dim: #56697c;
+    --amber: #e08020;
+    --amber-dim: #7a4715;
+    --cyan: #4fd4e4;
+    --bad: #e2453c;
+    --good: #48c98a;
+
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+            "Liberation Mono", "DejaVu Sans Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+            "Helvetica Neue", Arial, sans-serif;
+
+    --chamfer: polygon(0 6px, 6px 0, 100% 0, 100% calc(100% - 6px),
+                       calc(100% - 6px) 100%, 0 100%);
+    color-scheme: dark;
+  }
+
+  /* A garage terminal commits to one visual world; a light variant would
+     undo it. Single theme is the choice here, not an omission. */
+
+  body {
+    margin: 0;
+    background: var(--void);
+    color: var(--ice);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  #app {
+    height: 100vh;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  /* --- top bar --------------------------------------------------------- */
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 0.55rem 1rem;
+    border-bottom: 1px solid var(--rule);
+    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+  }
+  .brand {
+    font-size: 0.95rem;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--amber);
+    font-weight: 600;
+  }
+  .brand span { color: var(--dim); letter-spacing: 0.18em; }
+  .topbar .spacer { flex: 1; }
+  .stat-inline {
+    display: flex;
+    gap: 0.45rem;
+    align-items: baseline;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .stat-inline b {
+    color: var(--ice);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.85rem;
+  }
+
+  /* --- columns --------------------------------------------------------- */
+
+  .cols {
+    display: grid;
+    grid-template-columns: 19rem minmax(0, 1fr) 20rem;
+    gap: 1px;
+    background: var(--rule);
+    min-height: 0;
+  }
+  @media (max-width: 60rem) {
+    body { overflow: auto; }
+    #app { height: auto; }
+    .cols { grid-template-columns: 1fr; }
+  }
+
+  .col {
+    background: var(--void);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .col.scroll { overflow-y: auto; }
+
+  .panel-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem 0.4rem;
+    font-size: 0.66rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--dim);
+    border-bottom: 1px solid var(--rule);
+    background: var(--panel);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  .panel-head b { color: var(--amber); font-weight: 600; letter-spacing: 0.18em; }
+
+  /* --- slot list -------------------------------------------------------- */
+
+  .slots { display: flex; flex-direction: column; }
+
+  .slot {
+    display: grid;
+    grid-template-columns: 0.85rem minmax(0, 1fr) auto;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.4rem 0.75rem;
+    border: 0;
+    border-bottom: 1px solid var(--rule);
+    border-left: 2px solid transparent;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+  }
+  .slot:hover { background: var(--panel); }
+  .slot[aria-selected="true"] {
+    background: var(--panel-hi);
+    border-left-color: var(--amber);
+  }
+  .slot .depth { color: var(--rule-hi); font-size: 0.7rem; }
+  .slot .port { color: var(--ice); font-size: 0.78rem; letter-spacing: 0.04em; }
+  .slot .fitted { color: var(--dim); font-size: 0.68rem; }
+  .slot[data-empty="true"] .fitted { color: var(--amber-dim); }
+  .slot .iface {
+    font-size: 0.6rem;
+    letter-spacing: 0.08em;
+    color: var(--dim);
+    border: 1px solid var(--rule-hi);
+    padding: 0 0.25rem;
+    white-space: nowrap;
+  }
+  .slot.pulse { animation: pulse 0.9s ease-in-out infinite; }
+  @keyframes pulse {
+    0%, 100% { border-left-color: var(--amber); }
+    50% { border-left-color: transparent; }
+  }
+
+  /* --- parts list ------------------------------------------------------- */
+
+  .parts { display: flex; flex-direction: column; }
+
+  .part {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.15rem 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 0;
+    border-bottom: 1px solid var(--rule);
+    border-left: 2px solid transparent;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+  }
+  .part:hover:not([disabled]) { background: var(--panel); border-left-color: var(--cyan); }
+  .part[aria-current="true"] { background: var(--panel-hi); border-left-color: var(--amber); }
+  .part[disabled] {
+    cursor: not-allowed;
+    color: var(--dim);
+    background: repeating-linear-gradient(
+      135deg, transparent 0 7px, rgba(226, 69, 60, 0.055) 7px 14px);
+  }
+  .part-id { font-size: 0.78rem; color: var(--ice); letter-spacing: 0.02em; }
+  .part[disabled] .part-id { color: var(--dim); text-decoration: line-through; }
+  .part-figs {
+    font-size: 0.66rem;
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .part-why { grid-column: 1 / -1; font-size: 0.64rem; color: var(--bad); letter-spacing: 0.04em; }
+  .part-desc { grid-column: 1 / -1; font-size: 0.66rem; color: var(--dim); font-family: var(--sans); }
+
+  .hint {
+    padding: 0.75rem;
+    font-size: 0.7rem;
+    color: var(--dim);
+    font-family: var(--sans);
+    line-height: 1.6;
+  }
+
+  /* --- viewport --------------------------------------------------------- */
+
+  .stage { position: relative; flex: 1; min-height: 22rem; background: var(--void); }
+  #view { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  #view:active { cursor: grabbing; }
+
+  .bracket {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border: 1px solid var(--rule-hi);
+    pointer-events: none;
+  }
+  .bracket.tl { top: 8px; left: 8px; border-right: 0; border-bottom: 0; }
+  .bracket.tr { top: 8px; right: 8px; border-left: 0; border-bottom: 0; }
+  .bracket.bl { bottom: 8px; left: 8px; border-right: 0; border-top: 0; }
+  .bracket.br { bottom: 8px; right: 8px; border-left: 0; border-top: 0; }
+
+  .scan {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg, rgba(120, 170, 200, 0.035) 0 1px, transparent 1px 3px);
+  }
+  .sweep {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(79, 212, 228, 0.32), transparent);
+    pointer-events: none;
+    animation: sweep 7s linear infinite;
+  }
+  @keyframes sweep { from { top: -2%; } to { top: 102%; } }
+
+  .viewtag {
+    position: absolute;
+    top: 10px;
+    left: 34px;
+    font-size: 0.62rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dim);
+    pointer-events: none;
+  }
+  .viewtag em { color: var(--cyan); font-style: normal; }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid var(--rule);
+    background: var(--panel);
+  }
+  .btn {
+    font: inherit;
+    font-size: 0.66rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ice);
+    background: transparent;
+    border: 1px solid var(--rule-hi);
+    padding: 0.25rem 0.6rem;
+    cursor: pointer;
+    clip-path: var(--chamfer);
+  }
+  .btn:hover { border-color: var(--cyan); color: var(--cyan); }
+  .btn[aria-pressed="true"] { border-color: var(--amber); color: var(--amber); background: #1a1208; }
+
+  .joints {
+    max-height: 11rem;
+    overflow-y: auto;
+    border-top: 1px solid var(--rule);
+    background: var(--panel);
+  }
+  .joint {
+    display: grid;
+    grid-template-columns: 10.5rem minmax(0, 1fr) 3.4rem;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.2rem 0.75rem;
+  }
+  .joint label { font-size: 0.66rem; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+  .joint output { font-size: 0.66rem; color: var(--cyan); font-variant-numeric: tabular-nums; text-align: right; }
+  /* Twelve full-width sliders would shout louder than the machine. Thin track,
+     small amber thumb: present, readable, quiet. */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 1rem;
+    background: transparent;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 2px;
+    background: var(--rule-hi);
+  }
+  input[type="range"]::-moz-range-track { height: 2px; background: var(--rule-hi); }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 9px;
+    height: 9px;
+    margin-top: -3.5px;
+    background: var(--amber);
+    border: 0;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 9px;
+    height: 9px;
+    border: 0;
+    border-radius: 0;
+    background: var(--amber);
+  }
+
+  /* --- status ----------------------------------------------------------- */
+
+  .meters { padding: 0.65rem 0.75rem; display: flex; flex-direction: column; gap: 0.6rem; }
+  .meter { display: grid; grid-template-columns: 1fr auto; gap: 0.2rem 0.5rem; }
+  .meter-name {
+    font-size: 0.62rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .meter-value {
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--ice);
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+  }
+  .meter-value u { text-decoration: none; font-size: 0.62rem; color: var(--dim); }
+  .meter-delta { font-size: 0.66rem; font-variant-numeric: tabular-nums; }
+  .meter-delta.up { color: var(--bad); }
+  .meter-delta.down { color: var(--good); }
+  .bar {
+    grid-column: 1 / -1;
+    height: 5px;
+    background: #111820;
+    border: 1px solid var(--rule);
+    position: relative;
+    overflow: hidden;
+  }
+  .bar i { position: absolute; inset: 0 auto 0 0; background: var(--cyan); display: block; }
+  .bar.ghost i { background: var(--amber); opacity: 0.55; }
+  .bar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      90deg, transparent 0 9px, rgba(7, 9, 12, 0.9) 9px 10px);
+  }
+
+  .findings { display: flex; flex-direction: column; }
+  .finding {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    border-bottom: 1px solid var(--rule);
+    font-size: 0.68rem;
+    font-family: var(--sans);
+    line-height: 1.45;
+    color: var(--dim);
+  }
+  .tag {
+    font-family: var(--mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0 0.3rem;
+    height: fit-content;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+  .tag.warn { color: var(--amber); }
+  .tag.ok { color: var(--good); }
+
+  .spec { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+  #spec {
+    flex: 1;
+    min-height: 7rem;
+    margin: 0;
+    padding: 0.6rem 0.75rem;
+    overflow: auto;
+    font-size: 0.64rem;
+    line-height: 1.45;
+    color: var(--dim);
+    background: var(--void);
+    white-space: pre;
+    tab-size: 2;
+  }
+
+  :focus-visible { outline: 1px solid var(--amber); outline-offset: 1px; }
+  @media (prefers-reduced-motion: reduce) {
+    .sweep, .slot.pulse { animation: none; }
+    .sweep { display: none; }
+  }
+</style>
+
+<div id="app">
+  <div class="topbar">
+    <div class="brand">Assembly <span>/ urdfgen</span></div>
+    <div class="spacer"></div>
+    <div class="stat-inline">Unit <b id="unit-name">—</b></div>
+    <div class="stat-inline">Parts <b id="unit-parts">0</b></div>
+    <div class="stat-inline">Catalog <b>__MODULE_COUNT__</b></div>
+  </div>
+
+  <div class="cols">
+    <div class="col scroll">
+      <div class="panel-head"><span>Hardpoints</span><b id="slot-count">0</b></div>
+      <div class="slots" id="slots"></div>
+
+      <div class="panel-head"><span>Parts</span><b id="slot-iface">—</b></div>
+      <div class="parts" id="parts"></div>
+      <p class="hint" id="parts-hint">
+        Pick a hardpoint above to see what fits it.
+      </p>
+    </div>
+
+    <div class="col">
+      <div class="stage">
+        <canvas id="view"></canvas>
+        <div class="scan"></div>
+        <div class="sweep"></div>
+        <div class="viewtag">View <em id="view-name">ISO</em> · drag to rotate</div>
+        <div class="bracket tl"></div><div class="bracket tr"></div>
+        <div class="bracket bl"></div><div class="bracket br"></div>
+      </div>
+      <div class="controls">
+        <button class="btn" data-view="iso" aria-pressed="true">Iso</button>
+        <button class="btn" data-view="front" aria-pressed="false">Front</button>
+        <button class="btn" data-view="side" aria-pressed="false">Side</button>
+        <button class="btn" data-view="top" aria-pressed="false">Top</button>
+        <span style="flex:1"></span>
+        <button class="btn" id="pose-zero">Pose · Zero</button>
+        <button class="btn" id="pose-crouch">Pose · Crouch</button>
+        <button class="btn" id="reset">Reset unit</button>
+      </div>
+      <div class="joints" id="joints"></div>
+    </div>
+
+    <div class="col scroll">
+      <div class="panel-head"><span>Unit status</span><b id="status-flag">NOMINAL</b></div>
+      <div class="meters" id="meters"></div>
+
+      <div class="panel-head"><span>Equip check</span><b id="finding-count">0</b></div>
+      <div class="findings" id="findings"></div>
+
+      <div class="panel-head">
+        <span>Assembly spec</span>
+        <button class="btn" id="copy" style="padding:0 .45rem">Copy</button>
+      </div>
+      <div class="spec"><pre id="spec"></pre></div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const CATALOG = __PAYLOAD__;
+const DEFAULT_ASSEMBLY = __ASSEMBLY__;
+
+const MODULES = new Map(CATALOG.modules.map((m) => [m.id, m]));
+const MATERIALS = CATALOG.materials;
+
+/* ------------------------------------------------------------------ *
+ * Matrix helpers. Same convention as the Python builder: RPY is fixed-
+ * axis Z-Y-X, and poses compose as 4x4 matrices, never by adding angles.
+ * ------------------------------------------------------------------ */
+
+const I4 = () => [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+
+function mul(a, b) {
+  const out = new Array(16);
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 4; c++) {
+      out[r * 4 + c] =
+        a[r * 4] * b[c] + a[r * 4 + 1] * b[4 + c] +
+        a[r * 4 + 2] * b[8 + c] + a[r * 4 + 3] * b[12 + c];
+    }
+  }
+  return out;
+}
+
+function fromPose(origin) {
+  const [x, y, z] = origin.xyz;
+  const [rr, pp, yy] = origin.rpy;
+  const cr = Math.cos(rr), sr = Math.sin(rr);
+  const cp = Math.cos(pp), sp = Math.sin(pp);
+  const cy = Math.cos(yy), sy = Math.sin(yy);
+  return [
+    cy*cp, cy*sp*sr - sy*cr, cy*sp*cr + sy*sr, x,
+    sy*cp, sy*sp*sr + cy*cr, sy*sp*cr - cy*sr, y,
+    -sp,   cp*sr,            cp*cr,            z,
+    0, 0, 0, 1,
+  ];
+}
+
+function invertRigid(m) {
+  const r = [m[0],m[4],m[8], m[1],m[5],m[9], m[2],m[6],m[10]];
+  const t = [m[3], m[7], m[11]];
+  return [
+    r[0], r[1], r[2], -(r[0]*t[0] + r[1]*t[1] + r[2]*t[2]),
+    r[3], r[4], r[5], -(r[3]*t[0] + r[4]*t[1] + r[5]*t[2]),
+    r[6], r[7], r[8], -(r[6]*t[0] + r[7]*t[1] + r[8]*t[2]),
+    0, 0, 0, 1,
+  ];
+}
+
+function axisRotation(axis, angle) {
+  const n = Math.hypot(axis[0], axis[1], axis[2]) || 1;
+  const [x, y, z] = [axis[0]/n, axis[1]/n, axis[2]/n];
+  const c = Math.cos(angle), s = Math.sin(angle), k = 1 - c;
+  return [
+    c + x*x*k,   x*y*k - z*s, x*z*k + y*s, 0,
+    y*x*k + z*s, c + y*y*k,   y*z*k - x*s, 0,
+    z*x*k - y*s, z*y*k + x*s, c + z*z*k,   0,
+    0, 0, 0, 1,
+  ];
+}
+
+function translation(axis, distance) {
+  const n = Math.hypot(axis[0], axis[1], axis[2]) || 1;
+  const m = I4();
+  m[3] = axis[0] / n * distance;
+  m[7] = axis[1] / n * distance;
+  m[11] = axis[2] / n * distance;
+  return m;
+}
+
+const apply = (m, p) => [
+  m[0]*p[0] + m[1]*p[1] + m[2]*p[2] + m[3],
+  m[4]*p[0] + m[5]*p[1] + m[6]*p[2] + m[7],
+  m[8]*p[0] + m[9]*p[1] + m[10]*p[2] + m[11],
+];
+
+/* ------------------------------------------------------------------ *
+ * Assembly state. Same shape as AssemblySpec, so it can be copied
+ * straight into `urdfgen validate`.
+ * ------------------------------------------------------------------ */
+
+let unit = structuredClone(DEFAULT_ASSEMBLY);
+let jointValues = {};
+let selectedSlot = null;
+let preview = null;
+let viewName = "iso";
+let yaw = -0.9, pitch = 0.62;
+
+const moduleOf = (instanceId) => {
+  const instance = unit.modules.find((m) => m.id === instanceId);
+  return instance ? MODULES.get(instance.module) : null;
+};
+
+const usedPorts = () => {
+  const used = new Set();
+  for (const c of unit.connections) {
+    used.add(c.parent.instance + "." + c.parent.port);
+    used.add(c.child.instance + "." + c.child.port);
+  }
+  return used;
+};
+
+/** Every port of every fitted part, in tree order, with what occupies it. */
+function slots(state = unit) {
+  const used = new Set();
+  for (const c of state.connections) {
+    used.add(c.parent.instance + "." + c.parent.port);
+    used.add(c.child.instance + "." + c.child.port);
+  }
+  const childAt = new Map();
+  for (const c of state.connections) {
+    childAt.set(c.parent.instance + "." + c.parent.port, c.child.instance);
+  }
+
+  const out = [];
+  const walk = (instanceId, depth) => {
+    const instance = state.modules.find((m) => m.id === instanceId);
+    if (!instance) return;
+    const module = MODULES.get(instance.module);
+    for (const port of module.ports) {
+      const key = instanceId + "." + port.name;
+      // The port a part hangs from is not a hardpoint you can fill; it is
+      // how this part is already attached.
+      const isMount = state.connections.some(
+        (c) => c.child.instance === instanceId && c.child.port === port.name);
+      if (isMount) continue;
+
+      const fittedId = childAt.get(key) || null;
+      out.push({
+        key, depth, instance: instanceId, port: port.name,
+        role: port.role, interface: port.interface,
+        description: port.description,
+        fitted: fittedId,
+        fittedModule: fittedId
+          ? state.modules.find((m) => m.id === fittedId).module : null,
+        occupied: used.has(key),
+      });
+      if (fittedId) walk(fittedId, depth + 1);
+    }
+  };
+  walk(state.root, 0);
+  return out;
+}
+
+/** A part fits when an interface matches and the roles pair up (spec 2.4). */
+function fitTest(module, slot) {
+  const port = module.ports.find(
+    (p) => p.link === module.root_link &&
+           p.interface === slot.interface &&
+           p.role !== slot.role);
+  if (port) return { ok: true, port: port.name };
+
+  const sameInterface = module.ports.filter((p) => p.interface === slot.interface);
+  if (sameInterface.length === 0) {
+    const offered = [...new Set(module.ports.map((p) => p.interface))].join(", ") || "none";
+    return { ok: false, why: `Interface mismatch — needs ${slot.interface}, part has ${offered}` };
+  }
+  const roleClash = sameInterface.find((p) => p.role === slot.role);
+  if (roleClash) {
+    return { ok: false, why: `Both sides are ${slot.role} — a joint needs one male and one female` };
+  }
+  return { ok: false, why: "No mounting port on this part's root link" };
+}
+
+/** Detach whatever is on this slot, and everything hanging off it. */
+function detach(state, slotKey) {
+  const link = state.connections.find(
+    (c) => c.parent.instance + "." + c.parent.port === slotKey);
+  if (!link) return state;
+
+  const doomed = new Set([link.child.instance]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const c of state.connections) {
+      if (doomed.has(c.parent.instance) && !doomed.has(c.child.instance)) {
+        doomed.add(c.child.instance);
+        grew = true;
+      }
+    }
+  }
+  return {
+    ...state,
+    modules: state.modules.filter((m) => !doomed.has(m.id)),
+    connections: state.connections.filter(
+      (c) => !doomed.has(c.child.instance) && !doomed.has(c.parent.instance)),
+  };
+}
+
+function instanceName(state, moduleId, slot) {
+  const base = suggestName(moduleId, slot);
+  let name = base, n = 2;
+  while (state.modules.some((m) => m.id === name)) name = `${base}_${n++}`;
+  return name;
+}
+
+/** Name a part after the job it does, the way the prompt asks the model to. */
+function suggestName(moduleId, slot) {
+  const side = slot.port.match(/_(fl|fr|rl|rr)$/);
+  if (side) return "leg_" + side[1];
+  if (moduleId.startsWith("arm")) return "arm_main";
+  if (moduleId.startsWith("gripper")) return "gripper";
+  if (moduleId.startsWith("leg")) return "leg";
+  return moduleId.replace(/_v\d+$/, "");
+}
+
+function equip(state, slot, moduleId) {
+  const module = MODULES.get(moduleId);
+  const fit = fitTest(module, slot);
+  if (!fit.ok) return state;
+
+  const next = detach(state, slot.key);
+  const id = instanceName(next, moduleId, slot);
+  return {
+    ...next,
+    modules: [...next.modules, { id, module: moduleId, version: module.version }],
+    connections: [...next.connections, {
+      parent: { instance: slot.instance, port: slot.port },
+      child: { instance: id, port: fit.port },
+    }],
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Forward kinematics and geometry, ported from urdfgen/preview/scene.py.
+ * ------------------------------------------------------------------ */
+
+function linkTransforms(module, instanceId, values) {
+  const out = new Map([[module.root_link, I4()]]);
+  let progressed = true;
+  while (progressed) {
+    progressed = false;
+    for (const joint of module.joints) {
+      if (out.has(joint.child) || !out.has(joint.parent)) continue;
+      const q = values[instanceId + "/" + joint.name] || 0;
+      const motion = joint.type === "prismatic"
+        ? translation(joint.axis, q)
+        : (joint.movable ? axisRotation(joint.axis, q) : I4());
+      out.set(joint.child, mul(mul(out.get(joint.parent), fromPose(joint.origin)), motion));
+      progressed = true;
+    }
+  }
+  return out;
+}
+
+/** World transform of every instance, following the connection tree. */
+function instanceTransforms(state, values) {
+  const world = new Map([[state.root, I4()]]);
+  let progressed = true;
+  while (progressed) {
+    progressed = false;
+    for (const c of state.connections) {
+      if (world.has(c.child.instance) || !world.has(c.parent.instance)) continue;
+      const parentModule = moduleOf(c.parent.instance);
+      const childModule = moduleOf(c.child.instance);
+      if (!parentModule || !childModule) continue;
+
+      const parentPort = parentModule.ports.find((p) => p.name === c.parent.port);
+      const childPort = childModule.ports.find((p) => p.name === c.child.port);
+      const links = linkTransforms(parentModule, c.parent.instance, values);
+      const at = links.get(parentPort.link) || I4();
+
+      // T = parent_link . T_parent_port . T_child_port^-1   (spec 6.2)
+      world.set(c.child.instance, mul(mul(mul(
+        world.get(c.parent.instance), at), fromPose(parentPort.origin)),
+        invertRigid(fromPose(childPort.origin))));
+      progressed = true;
+    }
+  }
+  return world;
+}
+
+const CYL_SEGMENTS = 16;
+
+function facesOf(geometry) {
+  if (geometry.shape === "box") {
+    const [x, y, z] = geometry.size.map((v) => v / 2);
+    const c = [
+      [-x,-y,-z],[x,-y,-z],[x,y,-z],[-x,y,-z],
+      [-x,-y,z],[x,-y,z],[x,y,z],[-x,y,z],
+    ];
+    return [[0,1,2,3],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]]
+      .map((q) => q.map((i) => c[i]));
+  }
+  if (geometry.shape === "cylinder") {
+    const h = geometry.length / 2, r = geometry.radius;
+    const ring = [];
+    for (let i = 0; i < CYL_SEGMENTS; i++) {
+      const t = (2 * Math.PI * i) / CYL_SEGMENTS;
+      ring.push([r * Math.cos(t), r * Math.sin(t)]);
+    }
+    const out = ring.map(([cx, cy], i) => {
+      const [nx, ny] = ring[(i + 1) % CYL_SEGMENTS];
+      return [[cx,cy,-h],[nx,ny,-h],[nx,ny,h],[cx,cy,h]];
+    });
+    out.push(ring.map(([px, py]) => [px, py, h]));
+    out.push([...ring].reverse().map(([px, py]) => [px, py, -h]));
+    return out;
+  }
+  if (geometry.shape === "sphere") {
+    const r = geometry.radius, rings = 6, segs = 10, out = [];
+    const at = (i, j) => {
+      const phi = (Math.PI * i) / rings, theta = (2 * Math.PI * j) / segs;
+      return [r*Math.sin(phi)*Math.cos(theta), r*Math.sin(phi)*Math.sin(theta), r*Math.cos(phi)];
+    };
+    for (let i = 0; i < rings; i++) {
+      for (let j = 0; j < segs; j++) {
+        out.push([at(i,j), at(i,j+1), at(i+1,j+1), at(i+1,j)]);
+      }
+    }
+    return out;
+  }
+  return [];
+}
+
+function collectFaces(state, values) {
+  const world = instanceTransforms(state, values);
+  const faces = [];
+  for (const instance of state.modules) {
+    const module = MODULES.get(instance.module);
+    const base = world.get(instance.id);
+    if (!module || !base) continue;
+    const links = linkTransforms(module, instance.id, values);
+    for (const link of module.links) {
+      if (!link.visual) continue;
+      const at = mul(mul(base, links.get(link.name) || I4()), fromPose(link.visual.origin));
+      const rgba = MATERIALS[link.visual.material] || [0.62, 0.64, 0.67, 1];
+      for (const face of facesOf(link.visual.geometry)) {
+        faces.push({ points: face.map((p) => apply(at, p)), color: rgba, instance: instance.id });
+      }
+    }
+  }
+  return faces;
+}
+
+/* --- projection ---------------------------------------------------- */
+
+const VIEWS = { iso: [-0.9, 0.62], front: [0, 0], side: [-Math.PI / 2, 0], top: [0, Math.PI / 2 - 1e-4] };
+
+function cameraBasis() {
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const forward = [Math.cos(yaw) * cp, Math.sin(yaw) * cp, sp];
+  let reference = [0, 0, 1];
+  if (Math.abs(forward[2]) > 1 - 1e-6) reference = [0, 1, 0];
+  const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+  const norm = (v) => { const n = Math.hypot(...v) || 1; return v.map((x) => x / n); };
+  const right = norm(cross(reference, forward));
+  return { forward, right, up: cross(forward, right) };
+}
+
+const dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+const LIGHT = (() => { const n = Math.hypot(0.35, -0.6, 0.8); return [0.35/n, -0.6/n, 0.8/n]; })();
+const AMBIENT = 0.52;
+/* Higher than the print renderer's 0.42: against a near-black viewport the
+   dark polymer parts would otherwise sink into the background entirely. */
+
+function normalOf(points) {
+  const n = [0, 0, 0];
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i], b = points[(i + 1) % points.length];
+    n[0] += (a[1] - b[1]) * (a[2] + b[2]);
+    n[1] += (a[2] - b[2]) * (a[0] + b[0]);
+    n[2] += (a[0] - b[0]) * (a[1] + b[1]);
+  }
+  const len = Math.hypot(...n);
+  return len < 1e-12 ? null : n.map((v) => v / len);
+}
+
+const canvas = document.getElementById("view");
+const ctx = canvas.getContext("2d");
+
+function render() {
+  const faces = collectFaces(unit, jointValues);
+  const ratio = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth, height = canvas.clientHeight;
+  canvas.width = Math.max(1, Math.round(width * ratio));
+  canvas.height = Math.max(1, Math.round(height * ratio));
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  if (!faces.length) return;
+
+  let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const f of faces) for (const p of f.points) {
+    for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], p[i]); hi[i] = Math.max(hi[i], p[i]); }
+  }
+  const centre = [0, 1, 2].map((i) => (lo[i] + hi[i]) / 2);
+  const radius = Math.max(1e-3, Math.hypot(hi[0]-lo[0], hi[1]-lo[1], hi[2]-lo[2]) / 2);
+  const { forward, right, up } = cameraBasis();
+  const scale = (Math.min(width, height) * 0.40) / radius;
+  const project = (p) => {
+    const v = [p[0]-centre[0], p[1]-centre[1], p[2]-centre[2]];
+    return [width / 2 + dot(v, right) * scale, height / 2 - dot(v, up) * scale];
+  };
+
+  drawGround(lo[2] - centre[2], radius, project, centre);
+
+  for (const f of faces) {
+    f.depth = f.points.reduce((s, p) => s + dot(p, forward), 0) / f.points.length;
+  }
+  faces.sort((a, b) => a.depth - b.depth);
+
+  for (const f of faces) {
+    const n = normalOf(f.points);
+    let intensity = 1;
+    if (n) {
+      const facing = dot(n, forward) < 0 ? n.map((v) => -v) : n;
+      intensity = AMBIENT + (1 - AMBIENT) * Math.max(0, dot(facing, LIGHT));
+    }
+    const rgb = f.color.slice(0, 3).map((c) => Math.round(Math.min(1, c * intensity) * 255));
+    ctx.beginPath();
+    const pts = f.points.map(project);
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.closePath();
+    ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+    ctx.fill();
+    // Edges lighten rather than darken. The print renderer darkens them, which
+    // reads on paper; on a near-black ground it would erase the silhouette of
+    // anything dark.
+    const edge = rgb.map((c) => Math.round(c + (255 - c) * 0.28));
+    ctx.strokeStyle = `rgba(${edge[0]},${edge[1]},${edge[2]},0.55)`;
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+  }
+
+  drawHardpoints(project);
+}
+
+function drawGround(floor, radius, project, centre) {
+  const step = radius / 3;
+  ctx.strokeStyle = "rgba(79, 212, 228, 0.10)";
+  ctx.lineWidth = 1;
+  for (let i = -4; i <= 4; i++) {
+    for (const line of [
+      [[centre[0] + i*step, centre[1] - 4*step, centre[2] + floor],
+       [centre[0] + i*step, centre[1] + 4*step, centre[2] + floor]],
+      [[centre[0] - 4*step, centre[1] + i*step, centre[2] + floor],
+       [centre[0] + 4*step, centre[1] + i*step, centre[2] + floor]],
+    ]) {
+      const a = project(line[0]), b = project(line[1]);
+      ctx.beginPath();
+      ctx.moveTo(a[0], a[1]);
+      ctx.lineTo(b[0], b[1]);
+      ctx.stroke();
+    }
+  }
+}
+
+/** Mark the free hardpoints, and ring the selected one. */
+function drawHardpoints(project) {
+  const world = instanceTransforms(unit, jointValues);
+  for (const slot of slots()) {
+    if (slot.occupied) continue;
+    const module = moduleOf(slot.instance);
+    const port = module.ports.find((p) => p.name === slot.port);
+    const links = linkTransforms(module, slot.instance, jointValues);
+    const at = mul(mul(world.get(slot.instance) || I4(),
+      links.get(port.link) || I4()), fromPose(port.origin));
+    const [x, y] = project(apply(at, [0, 0, 0]));
+    const active = selectedSlot === slot.key;
+    ctx.strokeStyle = active ? "#e08020" : "rgba(79, 212, 228, 0.55)";
+    ctx.lineWidth = active ? 1.6 : 1;
+    ctx.beginPath();
+    ctx.arc(x, y, active ? 9 : 4.5, 0, Math.PI * 2);
+    ctx.stroke();
+    if (active) {
+      ctx.beginPath();
+      ctx.moveTo(x - 14, y); ctx.lineTo(x - 10, y);
+      ctx.moveTo(x + 10, y); ctx.lineTo(x + 14, y);
+      ctx.moveTo(x, y - 14); ctx.lineTo(x, y - 10);
+      ctx.moveTo(x, y + 10); ctx.lineTo(x, y + 14);
+      ctx.stroke();
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Readouts
+ * ------------------------------------------------------------------ */
+
+function figures(state) {
+  let mass = 0, dof = 0, links = 0, joints = 0;
+  for (const instance of state.modules) {
+    const module = MODULES.get(instance.module);
+    mass += module.mass;
+    dof += module.dof;
+    links += module.links.length;
+    joints += module.joints.length;
+  }
+  joints += state.connections.length;
+  const open = slots(state).filter((s) => !s.occupied).length;
+  return { mass, dof, links, joints, open, parts: state.modules.length };
+}
+
+/** The heuristic from validation/kinematics.py: a _left part on a right mount. */
+function handedness(state) {
+  const out = [];
+  for (const c of state.connections) {
+    const instance = state.modules.find((m) => m.id === c.child.instance);
+    if (!instance || instance.mirror && instance.mirror !== "none") continue;
+    const part = /_left/.test(instance.module) ? "left"
+      : /_right/.test(instance.module) ? "right" : null;
+    const mount = /(^|_)(fl|rl)$|left/i.test(c.parent.port) ? "left"
+      : /(^|_)(fr|rr)$|right/i.test(c.parent.port) ? "right" : null;
+    if (part && mount && part !== mount) {
+      out.push({
+        level: "warn",
+        text: `${instance.module} is a ${part}-hand part on ${c.parent.instance}.${c.parent.port}, a ${mount}-hand mount. It will fold inward.`,
+      });
+    }
+  }
+  return out;
+}
+
+const METERS = [
+  { key: "mass", name: "Total mass", unit: "kg", full: 12, digits: 3 },
+  { key: "dof", name: "Degrees of freedom", unit: "", full: 24, digits: 0 },
+  { key: "links", name: "Links", unit: "", full: 40, digits: 0 },
+  { key: "joints", name: "Joints", unit: "", full: 40, digits: 0 },
+  { key: "open", name: "Open hardpoints", unit: "", full: 12, digits: 0 },
+];
+
+function paintMeters() {
+  const now = figures(unit);
+  const then = preview ? figures(preview.state) : null;
+  const host = document.getElementById("meters");
+  host.replaceChildren();
+
+  for (const meter of METERS) {
+    const value = now[meter.key];
+    const after = then ? then[meter.key] : value;
+    const delta = after - value;
+
+    const row = document.createElement("div");
+    row.className = "meter";
+    row.innerHTML = `
+      <div class="meter-name">${meter.name}</div>
+      <div class="meter-value">${(then ? after : value).toFixed(meter.digits)}<u>${meter.unit}</u>
+        ${Math.abs(delta) > 1e-9
+          ? `<span class="meter-delta ${delta > 0 ? "up" : "down"}">${delta > 0 ? "▲" : "▼"}${Math.abs(delta).toFixed(meter.digits)}</span>`
+          : ""}</div>
+      <div class="bar${then ? " ghost" : ""}"><i style="width:${Math.min(100, ((then ? after : value) / meter.full) * 100).toFixed(1)}%"></i></div>`;
+    host.appendChild(row);
+  }
+  document.getElementById("unit-parts").textContent = now.parts;
+  document.getElementById("unit-name").textContent = unit.name;
+}
+
+function paintFindings() {
+  const host = document.getElementById("findings");
+  host.replaceChildren();
+  const found = [...handedness(unit)];
+
+  const open = slots().filter((s) => !s.occupied);
+  if (open.length) {
+    found.push({
+      level: "warn",
+      text: `${open.length} hardpoint${open.length > 1 ? "s" : ""} left open: ${open.map((s) => s.key).join(", ")}. That is allowed, and often deliberate.`,
+    });
+  }
+  if (!found.length) {
+    found.push({ level: "ok", text: "Nothing to flag. Mass, inertia and interference checks run in urdfgen validate." });
+  }
+
+  for (const item of found) {
+    const row = document.createElement("div");
+    row.className = "finding";
+    row.innerHTML = `<span class="tag ${item.level}">${item.level === "ok" ? "clear" : "warn"}</span><span>${item.text}</span>`;
+    host.appendChild(row);
+  }
+  document.getElementById("finding-count").textContent = found.length;
+  const flag = document.getElementById("status-flag");
+  const warned = found.some((f) => f.level === "warn");
+  flag.textContent = warned ? "CHECK" : "NOMINAL";
+  flag.style.color = warned ? "var(--amber)" : "var(--good)";
+}
+
+function paintSlots() {
+  const host = document.getElementById("slots");
+  host.replaceChildren();
+  const list = slots();
+  for (const slot of list) {
+    const button = document.createElement("button");
+    button.className = "slot";
+    button.type = "button";
+    button.setAttribute("aria-selected", String(selectedSlot === slot.key));
+    button.dataset.empty = String(!slot.occupied);
+    if (preview && preview.slot === slot.key) button.classList.add("pulse");
+    button.innerHTML = `
+      <span class="depth">${"›".repeat(slot.depth) || "▪"}</span>
+      <span>
+        <span class="port">${slot.instance}.${slot.port}</span><br>
+        <span class="fitted">${slot.fittedModule || "— empty —"}</span>
+      </span>
+      <span class="iface">${slot.interface}</span>`;
+    button.addEventListener("click", () => { selectedSlot = slot.key; paintAll(); });
+    host.appendChild(button);
+  }
+  document.getElementById("slot-count").textContent = list.length;
+}
+
+function paintParts() {
+  const host = document.getElementById("parts");
+  const hint = document.getElementById("parts-hint");
+  host.replaceChildren();
+
+  const slot = slots().find((s) => s.key === selectedSlot);
+  document.getElementById("slot-iface").textContent = slot ? slot.interface : "—";
+  if (!slot) {
+    hint.textContent = "Pick a hardpoint above to see what fits it.";
+    return;
+  }
+  hint.innerHTML = `<strong style="color:var(--ice)">${slot.instance}.${slot.port}</strong> — ${slot.description || "mount point"}<br>
+    Accepts a ${slot.role === "female" ? "male" : "female"} ${slot.interface} port.
+    Crossed-out parts cannot physically attach here.`;
+
+  const ordered = [...CATALOG.modules].sort((a, b) => {
+    const fa = fitTest(a, slot).ok, fb = fitTest(b, slot).ok;
+    return fa === fb ? a.id.localeCompare(b.id) : (fa ? -1 : 1);
+  });
+
+  for (const module of ordered) {
+    const fit = fitTest(module, slot);
+    const button = document.createElement("button");
+    button.className = "part";
+    button.type = "button";
+    button.disabled = !fit.ok;
+    button.setAttribute("aria-current", String(slot.fittedModule === module.id));
+    button.innerHTML = `
+      <span class="part-id">${module.id}</span>
+      <span class="part-figs">${module.mass.toFixed(2)} kg · ${module.dof} dof</span>
+      ${fit.ok
+        ? `<span class="part-desc">${module.display_name}</span>`
+        : `<span class="part-why">✕ ${fit.why}</span>`}`;
+
+    if (fit.ok) {
+      button.addEventListener("mouseenter", () => {
+        preview = { state: equip(unit, slot, module.id), slot: slot.key };
+        paintMeters(); paintSlots();
+      });
+      button.addEventListener("mouseleave", () => {
+        preview = null; paintMeters(); paintSlots();
+      });
+      button.addEventListener("click", () => {
+        unit = equip(unit, slot, module.id);
+        preview = null;
+        selectedSlot = null;
+        paintAll();
+      });
+    }
+    host.appendChild(button);
+  }
+}
+
+function paintJoints() {
+  const host = document.getElementById("joints");
+  host.replaceChildren();
+  for (const instance of unit.modules) {
+    const module = MODULES.get(instance.module);
+    for (const joint of module.joints) {
+      if (!joint.movable || !joint.limit) continue;
+      const key = instance.id + "/" + joint.name;
+      const row = document.createElement("div");
+      row.className = "joint";
+
+      const label = document.createElement("label");
+      label.textContent = key;
+      label.htmlFor = "j-" + key;
+
+      const range = document.createElement("input");
+      range.type = "range";
+      range.id = "j-" + key;
+      range.min = String(joint.limit.lower);
+      range.max = String(joint.limit.upper);
+      range.step = "0.01";
+      range.value = String(jointValues[key] || 0);
+
+      const out = document.createElement("output");
+      out.textContent = (jointValues[key] || 0).toFixed(2);
+
+      range.addEventListener("input", () => {
+        jointValues[key] = parseFloat(range.value);
+        out.textContent = jointValues[key].toFixed(2);
+        render();
+      });
+      row.append(label, range, out);
+      host.appendChild(row);
+    }
+  }
+}
+
+function paintSpec() {
+  const spec = {
+    name: unit.name,
+    root: unit.root,
+    modules: unit.modules,
+    connections: unit.connections,
+  };
+  document.getElementById("spec").textContent = JSON.stringify(spec, null, 2);
+}
+
+function paintAll() {
+  paintSlots(); paintParts(); paintMeters(); paintFindings(); paintJoints(); paintSpec(); render();
+}
+
+/* --- interaction ---------------------------------------------------- */
+
+let dragging = null;
+canvas.addEventListener("pointerdown", (event) => {
+  dragging = { x: event.clientX, y: event.clientY };
+  canvas.setPointerCapture(event.pointerId);
+});
+canvas.addEventListener("pointermove", (event) => {
+  if (!dragging) return;
+  yaw -= (event.clientX - dragging.x) * 0.01;
+  pitch = Math.max(-1.5, Math.min(1.5, pitch + (event.clientY - dragging.y) * 0.01));
+  dragging = { x: event.clientX, y: event.clientY };
+  document.getElementById("view-name").textContent = "FREE";
+  render();
+});
+for (const type of ["pointerup", "pointercancel"]) {
+  canvas.addEventListener(type, () => { dragging = null; });
+}
+
+for (const button of document.querySelectorAll("[data-view]")) {
+  button.addEventListener("click", () => {
+    viewName = button.dataset.view;
+    [yaw, pitch] = VIEWS[viewName];
+    for (const other of document.querySelectorAll("[data-view]")) {
+      other.setAttribute("aria-pressed", String(other === button));
+    }
+    document.getElementById("view-name").textContent = viewName.toUpperCase();
+    render();
+  });
+}
+
+document.getElementById("pose-zero").addEventListener("click", () => {
+  jointValues = {};
+  paintJoints(); render();
+});
+
+document.getElementById("pose-crouch").addEventListener("click", () => {
+  jointValues = {};
+  for (const instance of unit.modules) {
+    const module = MODULES.get(instance.module);
+    if (module.category !== "leg") continue;
+    const sign = /_right/.test(instance.module) ? 1 : -1;
+    for (const joint of module.joints) {
+      if (joint.name === "hip_pitch") jointValues[instance.id + "/" + joint.name] = -0.7 * sign;
+      if (joint.name === "knee_pitch") jointValues[instance.id + "/" + joint.name] = 1.4 * sign;
+    }
+  }
+  paintJoints(); render();
+});
+
+document.getElementById("reset").addEventListener("click", () => {
+  unit = structuredClone(DEFAULT_ASSEMBLY);
+  jointValues = {};
+  selectedSlot = null;
+  preview = null;
+  paintAll();
+});
+
+document.getElementById("copy").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  try {
+    await navigator.clipboard.writeText(document.getElementById("spec").textContent);
+    button.textContent = "Copied";
+  } catch {
+    const range = document.createRange();
+    range.selectNodeContents(document.getElementById("spec"));
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    button.textContent = "Selected";
+  }
+  setTimeout(() => { button.textContent = "Copy"; }, 1400);
+});
+
+window.addEventListener("resize", render);
+paintAll();
+</script>

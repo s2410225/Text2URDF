@@ -41,7 +41,7 @@ environment variable at them.
 | 1 | Expansion engine (transforms, namespacing, multi-module assembly) | implemented |
 | 2 | Validation layer | implemented |
 | 3 | Assembly layer (local LLM, two-stage generation, repair loop) | implemented |
-| 4 | Web UI | not started (a headless SVG preview stands in) |
+| 4 | Web UI | partial — a generated assembly page, no React yet |
 | 5 | Advanced features (tree editing, ROS 2 export, catalog search) | not started |
 
 Everything except the web UI works from the command line today. Phases 0–2 need
@@ -77,9 +77,12 @@ src/urdfgen/
   llm/prompts.py              system prompt, per-stage instructions, error feedback
   llm/assemble.py             two-stage generation
   llm/repair.py               validate, feed errors back, retry
+  catalog/payload.py          the catalog as JSON, for a UI or the API
   preview/scene.py            projects a built URDF into a 2D scene
   preview/svg.py              scene to SVG
   preview/raster.py           scene to PNG
+  ui/page.py                  generates the standalone assembly screen
+  ui/assets/assembly.html     its template
   cli.py
 tests/
   stub_llm.py                 an OpenAI-compatible stub server
@@ -133,6 +136,12 @@ into a pose, which is the fastest way to check that an assembly articulates the
 way it should. This is a complement to the interactive three.js viewer coming
 in phase 4, not a replacement for it.
 
+The assembly screen — pick a hardpoint, fit a part, watch the numbers move:
+
+```bash
+uv run urdfgen ui -o assembly.html   # then open it
+```
+
 These need a local model (see below):
 
 ```bash
@@ -144,6 +153,36 @@ uv run urdfgen generate "a four-legged robot with an arm on top" -o robot.urdf
 goes straight to URDF. Both accept Japanese or English. If the model cannot
 produce something that validates in three attempts, `assemble` still writes the
 best spec it got — with a non-zero exit — so you can fix the last mile by hand.
+
+## The assembly screen
+
+`urdfgen ui` writes one self-contained HTML file: no CDN, no build step, no
+server. It opens from a `file://` URL.
+
+The interaction is a parts garage. The left rail lists every free hardpoint on
+the machine — which is just every unused port on every fitted part. Selecting
+one shows the whole catalog, with the parts that cannot attach struck through
+and told why: `Interface mismatch — needs TOOL_M20, part has MOUNT_A40` or
+`Both sides are female`. Those are the section 2.4 pairing rules, not a
+decoration. Hovering a part previews what fitting it would do to the mass and
+degrees of freedom before you commit.
+
+Two boundaries are deliberate:
+
+* **The page never writes URDF.** It produces an `AssemblySpec`, exactly like
+  the LLM layer does, and `urdfgen build` turns that into XML. The same rule
+  applies for the same reason.
+* **The page is generated from the catalog, never hand-written.** Copying the
+  module data into the HTML would fork the single source of truth.
+
+It also does not re-implement the validation layer. What it checks live is the
+equip-time rules — interface, role, port occupancy — because those have to be
+interactive. Mass, inertia, interference and the URDF round trip stay in Python;
+copy the spec out and run `urdfgen validate` on it.
+
+This is the phase 4 web UI in a form that works today. The React and three.js
+viewer the spec describes will supersede it, and the catalog payload it consumes
+(`urdfgen`'s `catalog_payload`) is the shape `GET /api/catalog` will return.
 
 ## Running a local model
 

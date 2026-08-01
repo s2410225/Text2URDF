@@ -36,6 +36,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/urdfgen"]
+artifacts = ["src/urdfgen/ui/assets/*.html"]
 
 [tool.ruff]
 line-length = 100
