@@ -159,13 +159,22 @@ best spec it got — with a non-zero exit — so you can fix the last mile by ha
 `urdfgen ui` writes one self-contained HTML file: no CDN, no build step, no
 server. It opens from a `file://` URL.
 
-The interaction is a parts garage. The left rail lists every free hardpoint on
-the machine — which is just every unused port on every fitted part. Selecting
-one shows the whole catalog, with the parts that cannot attach struck through
-and told why: `Interface mismatch — needs TOOL_M20, part has MOUNT_A40` or
-`Both sides are female`. Those are the section 2.4 pairing rules, not a
-decoration. Hovering a part previews what fitting it would do to the mass and
-degrees of freedom before you commit.
+The interaction is a parts garage. The left rail carries one hardpoint row; it
+opens into the whole tree of them — every port on every fitted part, nested by
+what it hangs off, so `arm_main.tool` sits under `body.top`. A quadruped starts
+with nine and gains one with every part fitted, which is why the list is closed
+by default.
+
+Selecting a hardpoint shows the whole catalog, with the parts that cannot attach
+struck through and told why: `Interface mismatch — needs TOOL_M20, part has
+MOUNT_A40` or `Both sides are female`. Those are the section 2.4 pairing rules,
+not a decoration.
+
+Clicking a part previews it — it appears in the viewport, and the mass and
+degrees of freedom show what it would cost — but nothing is fitted until you
+press Install. Fitting a part rebuilds the subtree below it, which is too much
+to do by accident. The spec and the joint sliders keep showing the committed
+machine until then, so what you can copy out is always what you built.
 
 Two boundaries are deliberate:
 

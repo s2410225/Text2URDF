@@ -123,14 +123,49 @@
 
   /* --- slot list -------------------------------------------------------- */
 
-  .slots { display: flex; flex-direction: column; }
+  /* One row is showing at rest; the tree opens on demand. Nine hardpoints on a
+     quadruped is already a scroll, and it grows with every part fitted. */
+  .slot-current {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 0.5rem;
+    align-items: center;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 0;
+    border-bottom: 1px solid var(--rule);
+    border-left: 2px solid var(--amber);
+    background: var(--panel-hi);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .slot-current:hover { background: #172029; }
+  .slot-current[data-empty="true"] { border-left-color: var(--rule-hi); }
+  .slot-current .chev { color: var(--dim); font-size: 0.7rem; }
+  .slot-current[aria-expanded="true"] .chev { color: var(--amber); }
+
+  /* A class with `display` outranks the user-agent's `[hidden]` rule, so the
+     panels that toggle have to say it themselves. */
+  [hidden] { display: none !important; }
+
+  .slots {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid var(--rule);
+    background: #0a0d12;
+    max-height: 21rem;
+    overflow-y: auto;
+  }
 
   .slot {
     display: grid;
-    grid-template-columns: 0.85rem minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.5rem;
     align-items: center;
-    padding: 0.4rem 0.75rem;
+    padding: 0.35rem 0.75rem;
+    padding-left: calc(0.75rem + var(--d, 0) * 0.55rem);
     border: 0;
     border-bottom: 1px solid var(--rule);
     border-left: 2px solid transparent;
@@ -146,11 +181,11 @@
     background: var(--panel-hi);
     border-left-color: var(--amber);
   }
-  .slot .depth { color: var(--rule-hi); font-size: 0.7rem; }
-  .slot .port { color: var(--ice); font-size: 0.78rem; letter-spacing: 0.04em; }
-  .slot .fitted { color: var(--dim); font-size: 0.68rem; }
+  .slot .port { color: var(--ice); font-size: 0.76rem; letter-spacing: 0.03em; }
+  .slot .fitted { color: var(--dim); font-size: 0.66rem; }
   .slot[data-empty="true"] .fitted { color: var(--amber-dim); }
-  .slot .iface {
+  .slot .iface,
+  .slot-current .iface {
     font-size: 0.6rem;
     letter-spacing: 0.08em;
     color: var(--dim);
@@ -163,6 +198,40 @@
     0%, 100% { border-left-color: var(--amber); }
     50% { border-left-color: transparent; }
   }
+
+  /* --- pending install ------------------------------------------------- */
+
+  /* The column is narrow, so the buttons get their own row rather than
+     squeezing the label into a two-line stub. */
+  .confirm {
+    display: grid;
+    grid-template-columns: auto auto;
+    justify-content: end;
+    gap: 0.45rem 0.5rem;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--amber-dim);
+    background: #1a1208;
+  }
+  .confirm-text { grid-column: 1 / -1; min-width: 0; }
+  .confirm-text b {
+    display: block;
+    color: var(--amber);
+    font-size: 0.74rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .confirm-text span {
+    display: block;
+    font-size: 0.62rem;
+    color: var(--dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .btn.install { border-color: var(--amber); color: var(--amber); }
+  .btn.install:hover { background: var(--amber); color: #12080a; }
 
   /* --- parts list ------------------------------------------------------- */
 
@@ -456,10 +525,20 @@
 
   <div class="cols">
     <div class="col scroll">
-      <div class="panel-head"><span>Hardpoints</span><b id="slot-count">0</b></div>
-      <div class="slots" id="slots"></div>
+      <div class="panel-head"><span>Hardpoint</span><b id="slot-count">0</b></div>
+      <button class="slot-current" id="slot-current" type="button" aria-expanded="false"
+              aria-controls="slots"></button>
+      <div class="slots" id="slots" hidden></div>
 
       <div class="panel-head"><span>Parts</span><b id="slot-iface">—</b></div>
+      <div class="confirm" id="confirm" hidden>
+        <div class="confirm-text">
+          <b id="confirm-part">—</b>
+          <span id="confirm-where">—</span>
+        </div>
+        <button class="btn install" id="install" type="button">Install</button>
+        <button class="btn" id="cancel" type="button">Cancel</button>
+      </div>
       <div class="parts" id="parts"></div>
       <p class="hint" id="parts-hint">
         Pick a hardpoint above to see what fits it.
@@ -595,12 +674,20 @@ const apply = (m, p) => [
 let unit = structuredClone(DEFAULT_ASSEMBLY);
 let jointValues = {};
 let selectedSlot = null;
-let preview = null;
+let slotsOpen = false;
 let viewName = "iso";
 let yaw = -0.9, pitch = 0.62;
 
-const moduleOf = (instanceId) => {
-  const instance = unit.modules.find((m) => m.id === instanceId);
+/* A part chosen but not yet installed. The viewport and the meters show
+   `pending.state`; the spec and the joint sliders keep showing `unit`, so
+   nothing you could copy out or pose changes until you commit. */
+let pending = null;   // { slotKey, moduleId, state }
+
+/** The assembly on screen: the pending one while previewing, else the unit. */
+const shown = () => (pending ? pending.state : unit);
+
+const moduleOf = (instanceId, state = unit) => {
+  const instance = state.modules.find((m) => m.id === instanceId);
   return instance ? MODULES.get(instance.module) : null;
 };
 
@@ -764,8 +851,8 @@ function instanceTransforms(state, values) {
     progressed = false;
     for (const c of state.connections) {
       if (world.has(c.child.instance) || !world.has(c.parent.instance)) continue;
-      const parentModule = moduleOf(c.parent.instance);
-      const childModule = moduleOf(c.child.instance);
+      const parentModule = moduleOf(c.parent.instance, state);
+      const childModule = moduleOf(c.child.instance, state);
       if (!parentModule || !childModule) continue;
 
       const parentPort = parentModule.ports.find((p) => p.name === c.parent.port);
@@ -883,7 +970,8 @@ const canvas = document.getElementById("view");
 const ctx = canvas.getContext("2d");
 
 function render() {
-  const faces = collectFaces(unit, jointValues);
+  const state = shown();
+  const faces = collectFaces(state, jointValues);
   const ratio = window.devicePixelRatio || 1;
   const width = canvas.clientWidth, height = canvas.clientHeight;
   canvas.width = Math.max(1, Math.round(width * ratio));
@@ -936,7 +1024,7 @@ function render() {
     ctx.stroke();
   }
 
-  drawHardpoints(project);
+  drawHardpoints(state, project);
 }
 
 function drawGround(floor, radius, project, centre) {
@@ -960,11 +1048,11 @@ function drawGround(floor, radius, project, centre) {
 }
 
 /** Mark the free hardpoints, and ring the selected one. */
-function drawHardpoints(project) {
-  const world = instanceTransforms(unit, jointValues);
-  for (const slot of slots()) {
+function drawHardpoints(state, project) {
+  const world = instanceTransforms(state, jointValues);
+  for (const slot of slots(state)) {
     if (slot.occupied) continue;
-    const module = moduleOf(slot.instance);
+    const module = moduleOf(slot.instance, state);
     const port = module.ports.find((p) => p.name === slot.port);
     const links = linkTransforms(module, slot.instance, jointValues);
     const at = mul(mul(world.get(slot.instance) || I4(),
@@ -1035,7 +1123,7 @@ const METERS = [
 
 function paintMeters() {
   const now = figures(unit);
-  const then = preview ? figures(preview.state) : null;
+  const then = pending ? figures(pending.state) : null;
   const host = document.getElementById("meters");
   host.replaceChildren();
 
@@ -1088,28 +1176,77 @@ function paintFindings() {
   flag.style.color = warned ? "var(--amber)" : "var(--good)";
 }
 
+/** The hardpoint panel: one row at rest, the whole tree when opened.
+ *
+ * `slots()` already walks the connection tree, so the depth it reports is the
+ * distance from the body -- the same nesting the joint panel uses. Indenting by
+ * it turns a flat list of nine-and-growing ports into the shape of the machine.
+ *
+ * The tree is of the committed unit, never the pending one: the list must not
+ * shift under the cursor while a part is being previewed.
+ */
 function paintSlots() {
   const host = document.getElementById("slots");
   host.replaceChildren();
   const list = slots();
+
   for (const slot of list) {
     const button = document.createElement("button");
     button.className = "slot";
     button.type = "button";
+    button.style.setProperty("--d", slot.depth);
     button.setAttribute("aria-selected", String(selectedSlot === slot.key));
     button.dataset.empty = String(!slot.occupied);
-    if (preview && preview.slot === slot.key) button.classList.add("pulse");
+    if (pending && pending.slotKey === slot.key) button.classList.add("pulse");
     button.innerHTML = `
-      <span class="depth">${"›".repeat(slot.depth) || "▪"}</span>
       <span>
-        <span class="port">${slot.instance}.${slot.port}</span><br>
+        <span class="port"><span class="tree">${slot.depth ? "└" : "▪"}</span>${slot.instance}.${slot.port}</span><br>
         <span class="fitted">${slot.fittedModule || "— empty —"}</span>
       </span>
       <span class="iface">${slot.interface}</span>`;
-    button.addEventListener("click", () => { selectedSlot = slot.key; paintAll(); });
+    button.addEventListener("click", () => {
+      selectedSlot = slot.key;
+      slotsOpen = false;
+      pending = null;
+      paintAll();
+    });
     host.appendChild(button);
   }
+
+  host.hidden = !slotsOpen;
   document.getElementById("slot-count").textContent = list.length;
+
+  const current = document.getElementById("slot-current");
+  const slot = list.find((s) => s.key === selectedSlot);
+  current.setAttribute("aria-expanded", String(slotsOpen));
+  current.dataset.empty = String(!slot || !slot.occupied);
+  const open = list.filter((s) => !s.occupied).length;
+  current.innerHTML = slot
+    ? `<span>
+         <span class="port">${slot.instance}.${slot.port}</span><br>
+         <span class="fitted">${slot.fittedModule || "— empty —"}</span>
+       </span>
+       <span class="iface">${slot.interface}</span>
+       <span class="chev">${slotsOpen ? "▲" : "▼"}</span>`
+    : `<span>
+         <span class="port">Select a hardpoint</span><br>
+         <span class="fitted">${list.length} on this unit · ${open} open</span>
+       </span>
+       <span class="iface">—</span>
+       <span class="chev">${slotsOpen ? "▲" : "▼"}</span>`;
+}
+
+/** The install bar, shown only while a part is picked but not committed. */
+function paintConfirm() {
+  const bar = document.getElementById("confirm");
+  bar.hidden = !pending;
+  if (!pending) return;
+
+  const module = MODULES.get(pending.moduleId);
+  const delta = figures(pending.state).mass - figures(unit).mass;
+  document.getElementById("confirm-part").textContent = module.id;
+  document.getElementById("confirm-where").textContent =
+    `→ ${pending.slotKey} · ${delta >= 0 ? "+" : "−"}${Math.abs(delta).toFixed(3)} kg`;
 }
 
 function paintParts() {
@@ -1120,12 +1257,13 @@ function paintParts() {
   const slot = slots().find((s) => s.key === selectedSlot);
   document.getElementById("slot-iface").textContent = slot ? slot.interface : "—";
   if (!slot) {
-    hint.textContent = "Pick a hardpoint above to see what fits it.";
+    hint.textContent = "Open the hardpoint list above and pick a mount to see what fits it.";
     return;
   }
   hint.innerHTML = `<strong style="color:var(--ice)">${slot.instance}.${slot.port}</strong> — ${slot.description || "mount point"}<br>
     Accepts a ${slot.role === "female" ? "male" : "female"} ${slot.interface} port.
-    Crossed-out parts cannot physically attach here.`;
+    Crossed-out parts cannot physically attach here.
+    Click a part to preview it, then Install to fit it.`;
 
   const ordered = [...CATALOG.modules].sort((a, b) => {
     const fa = fitTest(a, slot).ok, fb = fitTest(b, slot).ok;
@@ -1138,7 +1276,10 @@ function paintParts() {
     button.className = "part";
     button.type = "button";
     button.disabled = !fit.ok;
-    button.setAttribute("aria-current", String(slot.fittedModule === module.id));
+    const picked = pending
+      ? pending.moduleId === module.id
+      : slot.fittedModule === module.id;
+    button.setAttribute("aria-current", String(picked));
     button.innerHTML = `
       <span class="part-id">${module.id}</span>
       <span class="part-figs">${module.mass.toFixed(2)} kg · ${module.dof} dof</span>
@@ -1146,18 +1287,15 @@ function paintParts() {
         ? `<span class="part-desc">${module.display_name}</span>`
         : `<span class="part-why">✕ ${fit.why}</span>`}`;
 
+    // One click previews; the install bar commits. Fitting a part rebuilds the
+    // subtree below it, which is too much to do by accident on a stray click.
     if (fit.ok) {
-      button.addEventListener("mouseenter", () => {
-        preview = { state: equip(unit, slot, module.id), slot: slot.key };
-        paintMeters(); paintSlots();
-      });
-      button.addEventListener("mouseleave", () => {
-        preview = null; paintMeters(); paintSlots();
-      });
       button.addEventListener("click", () => {
-        unit = equip(unit, slot, module.id);
-        preview = null;
-        selectedSlot = null;
+        pending = {
+          slotKey: slot.key,
+          moduleId: module.id,
+          state: equip(unit, slot, module.id),
+        };
         paintAll();
       });
     }
@@ -1273,10 +1411,30 @@ function paintSpec() {
 }
 
 function paintAll() {
-  paintSlots(); paintParts(); paintMeters(); paintFindings(); paintJoints(); paintSpec(); render();
+  paintSlots(); paintConfirm(); paintParts();
+  paintMeters(); paintFindings(); paintJoints(); paintSpec(); render();
 }
 
 /* --- interaction ---------------------------------------------------- */
+
+document.getElementById("slot-current").addEventListener("click", () => {
+  slotsOpen = !slotsOpen;
+  paintSlots();
+});
+
+document.getElementById("install").addEventListener("click", () => {
+  if (!pending) return;
+  unit = pending.state;
+  pending = null;
+  selectedSlot = null;
+  slotsOpen = false;
+  paintAll();
+});
+
+document.getElementById("cancel").addEventListener("click", () => {
+  pending = null;
+  paintAll();
+});
 
 let dragging = null;
 canvas.addEventListener("pointerdown", (event) => {
@@ -1330,7 +1488,8 @@ document.getElementById("reset").addEventListener("click", () => {
   unit = structuredClone(DEFAULT_ASSEMBLY);
   jointValues = {};
   selectedSlot = null;
-  preview = null;
+  slotsOpen = false;
+  pending = null;
   paintAll();
 });
 

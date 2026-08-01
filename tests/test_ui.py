@@ -207,6 +207,19 @@ def test_every_element_the_script_reaches_for_exists(catalog: Catalog) -> None:
     assert wanted <= declared, f"script reaches for missing ids: {sorted(wanted - declared)}"
 
 
+def test_panels_that_toggle_can_actually_hide(catalog: Catalog) -> None:
+    """A class carrying `display` outranks the user agent's `[hidden]` rule.
+
+    The hardpoint list and the install bar are shown and hidden by toggling
+    `hidden`, and both set a `display` of their own, so without an explicit
+    override they stay on screen forever. Only a browser sees that; pin it here.
+    """
+    page = render_page(catalog)
+    assert re.search(r"\[hidden\]\s*\{[^}]*display:\s*none\s*!important", page)
+    for element in ("slots", "confirm"):
+        assert re.search(rf'id="{element}"[^>]*\shidden', page), f"{element} should start hidden"
+
+
 def test_page_uses_the_requested_title(catalog: Catalog) -> None:
     assert "<title>GARAGE</title>" in render_page(catalog, title="GARAGE")
 
