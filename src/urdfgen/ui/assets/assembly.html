@@ -436,7 +436,13 @@
 
   /* --- status ----------------------------------------------------------- */
 
-  .meters { padding: 0.65rem 0.75rem; display: flex; flex-direction: column; gap: 0.6rem; }
+  .meters {
+    padding: 0.65rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    overflow-y: auto;
+  }
   .meter { display: grid; grid-template-columns: 1fr auto; gap: 0.2rem 0.5rem; }
   .meter-name {
     font-size: 0.62rem;
@@ -500,15 +506,33 @@
   .tag.warn { color: var(--amber); }
   .tag.ok { color: var(--good); }
 
-  /* Under the viewport now, where the stage owns the flexible height, so the
-     spec takes a fixed slice and scrolls inside it. */
-  .spec {
+  /* The strip under the viewport: the spec you copy out, and the numbers that
+     describe what you would be copying, side by side. The stage owns the
+     flexible height up there, so this takes a fixed slice of it. */
+  .dock {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 19rem;
+    gap: 1px;
+    background: var(--rule);
+    border-top: 1px solid var(--rule);
+    flex: 0 0 auto;
+    min-height: 0;
+    /* Tall enough that all five meters are readable without scrolling, which
+       is the only reason to have them on one panel. */
+    height: 16rem;
+  }
+  .dock-pane {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    flex: 0 0 auto;
-    max-height: 14rem;
+    overflow: hidden;
+    background: var(--void);
   }
+  @media (max-width: 60rem) {
+    .dock { grid-template-columns: 1fr; height: auto; }
+  }
+
+  .spec { display: flex; flex-direction: column; min-height: 0; flex: 1; }
   #spec {
     flex: 1;
     min-height: 7rem;
@@ -580,17 +604,22 @@
         <button class="btn" id="pose-crouch">Pose · Crouch</button>
         <button class="btn" id="reset">Reset unit</button>
       </div>
-      <div class="panel-head">
-        <span>Assembly spec</span>
-        <button class="btn" id="copy" style="padding:0 .45rem">Copy</button>
+      <div class="dock">
+        <div class="dock-pane">
+          <div class="panel-head">
+            <span>Assembly spec</span>
+            <button class="btn" id="copy" style="padding:0 .45rem">Copy</button>
+          </div>
+          <div class="spec"><pre id="spec"></pre></div>
+        </div>
+        <div class="dock-pane">
+          <div class="panel-head"><span>Unit status</span><b id="status-flag">NOMINAL</b></div>
+          <div class="meters" id="meters"></div>
+        </div>
       </div>
-      <div class="spec"><pre id="spec"></pre></div>
     </div>
 
     <div class="col">
-      <div class="panel-head"><span>Unit status</span><b id="status-flag">NOMINAL</b></div>
-      <div class="meters" id="meters"></div>
-
       <div class="panel-head"><span>Equip check</span><b id="finding-count">0</b></div>
       <div class="findings" id="findings"></div>
 
