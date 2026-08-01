@@ -14,6 +14,9 @@ dependencies = [
     # The assembly layer talks to a local OpenAI-compatible server over plain
     # HTTP; no vendor SDK is involved.
     "httpx>=0.27",
+    # PNG previews. 10.1 is where load_default() became scalable, which is what
+    # lets captions render without depending on a system font path.
+    "pillow>=10.1",
 ]
 
 [project.scripts]

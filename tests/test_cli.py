@@ -205,6 +205,49 @@ def test_preview_reports_a_missing_file(tmp_path: Path, capsys: pytest.CaptureFi
     assert "cannot read" in capsys.readouterr().err
 
 
+def test_preview_writes_a_png_when_asked_for_one(tmp_path: Path) -> None:
+    urdf = tmp_path / "quad.urdf"
+    main(["build", str(SPECS / "quadruped_a.json"), "-o", str(urdf)])
+
+    output = tmp_path / "quad.png"
+    assert main(["preview", str(urdf), "-o", str(output)]) == EXIT_OK
+    assert output.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_preview_format_can_be_overridden(tmp_path: Path) -> None:
+    urdf = tmp_path / "quad.urdf"
+    main(["build", str(SPECS / "quadruped_a.json"), "-o", str(urdf)])
+
+    output = tmp_path / "quad.out"
+    assert main(["preview", str(urdf), "-o", str(output), "--format", "png"]) == EXIT_OK
+    assert output.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_preview_refuses_to_put_a_png_on_stdout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Binary down a terminal is never what the user meant."""
+    urdf = tmp_path / "quad.urdf"
+    main(["build", str(SPECS / "quadruped_a.json"), "-o", str(urdf)])
+    capsys.readouterr()
+
+    assert main(["preview", str(urdf), "--format", "png"]) == EXIT_FAILED
+    captured = capsys.readouterr()
+    assert "give -o FILE" in captured.err
+    assert captured.out == ""
+
+
+def test_preview_reports_an_unusable_extension(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    urdf = tmp_path / "quad.urdf"
+    main(["build", str(SPECS / "quadruped_a.json"), "-o", str(urdf)])
+    capsys.readouterr()
+
+    assert main(["preview", str(urdf), "-o", str(tmp_path / "quad.jpeg")]) == EXIT_FAILED
+    assert "cannot tell the format" in capsys.readouterr().err
+
+
 # --- commands that need a local LLM ---------------------------------------
 
 

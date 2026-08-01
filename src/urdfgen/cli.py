@@ -22,8 +22,14 @@ from urdfgen.ir.assembly import AssemblySpec
 from urdfgen.llm.client import LLMError, LocalLLMClient
 from urdfgen.llm.config import LLMConfigError, load_config
 from urdfgen.llm.repair import MAX_ATTEMPTS, AssemblyOutcome, assemble_with_repair
-from urdfgen.preview import VIEWS, PreviewError, render_file
-from urdfgen.preview.svg import DEFAULT_WIDTH
+from urdfgen.preview import (
+    DEFAULT_WIDTH,
+    FORMATS,
+    VIEWS,
+    PreviewError,
+    render_file,
+    save,
+)
 from urdfgen.validation import validate
 from urdfgen.validation.result import ValidationError, summarise
 
@@ -113,10 +119,21 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_llm_options(generate)
     generate.set_defaults(handler=_cmd_generate)
 
-    preview = subparsers.add_parser("preview", help="draw a URDF as an SVG")
+    preview = subparsers.add_parser("preview", help="draw a URDF as an SVG or PNG")
     preview.add_argument("urdf", type=Path, help="path to a URDF file")
     preview.add_argument(
-        "-o", "--output", type=Path, default=None, help="output file (default: stdout)"
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        help="output file; the extension picks the format (default: SVG to stdout)",
+    )
+    preview.add_argument(
+        "--format",
+        dest="fmt",
+        default=None,
+        choices=sorted(FORMATS),
+        help="override the format implied by the output extension",
     )
     preview.add_argument(
         "--joint",
@@ -304,25 +321,28 @@ def _cmd_generate(args: argparse.Namespace, catalog: Catalog) -> int:
 def _cmd_preview(args: argparse.Namespace, catalog: Catalog) -> int:
     del catalog  # the URDF is self-contained; the catalog is not consulted
     try:
-        configuration = _parse_joints(args.joint)
-        svg = render_file(
-            str(args.urdf),
-            configuration=configuration,
-            view=args.view,
-            width=args.width,
-            title=args.title,
-            show_grid=not args.no_grid,
-            show_axes=not args.no_axes,
-        )
+        options = {
+            "configuration": _parse_joints(args.joint),
+            "view": args.view,
+            "width": args.width,
+            "title": args.title,
+            "show_grid": not args.no_grid,
+            "show_axes": not args.no_axes,
+        }
+
+        if args.output is None:
+            if (args.fmt or "svg") != "svg":
+                msg = f"{args.fmt} is binary; give -o FILE instead of writing to stdout"
+                raise PreviewError(msg)
+            sys.stdout.write(render_file(str(args.urdf), **options))
+            return EXIT_OK
+
+        written = save(str(args.urdf), args.output, fmt=args.fmt, **options)
     except PreviewError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_FAILED
 
-    if args.output is None:
-        sys.stdout.write(svg)
-    else:
-        args.output.write_text(svg, encoding="utf-8")
-        print(f"wrote {args.output}", file=sys.stderr)
+    print(f"wrote {args.output} ({written})", file=sys.stderr)
     return EXIT_OK
 
 

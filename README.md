@@ -77,7 +77,9 @@ src/urdfgen/
   llm/prompts.py              system prompt, per-stage instructions, error feedback
   llm/assemble.py             two-stage generation
   llm/repair.py               validate, feed errors back, retry
-  preview/svg.py              headless SVG rendering of a built URDF
+  preview/scene.py            projects a built URDF into a 2D scene
+  preview/svg.py              scene to SVG
+  preview/raster.py           scene to PNG
   cli.py
 tests/
   stub_llm.py                 an OpenAI-compatible stub server
@@ -110,7 +112,7 @@ uv run urdfgen validate tests/fixtures/specs/quadruped_a.json
 uv run urdfgen build tests/fixtures/specs/quadruped_a.json -o quadruped.urdf
 
 # look at the result
-uv run urdfgen preview quadruped.urdf -o quadruped.svg
+uv run urdfgen preview quadruped.urdf -o quadruped.png
 uv run urdfgen preview quadruped.urdf -o crouched.svg --view side \
     --joint leg_fl_knee_pitch=-1.2 --joint leg_fr_knee_pitch=1.2
 ```
@@ -119,8 +121,11 @@ uv run urdfgen preview quadruped.urdf -o crouched.svg --view side \
 write a URDF for a spec that fails validation. `--skip-validation` overrides
 that when you want to see what a rejected spec would have produced.
 
-`preview` draws a URDF as an SVG with no browser, GPU or display involved, so
-it works over SSH and in CI. `--view` takes `iso`, `front`, `side` or `top`;
+`preview` draws a URDF with no browser, GPU or display involved, so it works
+over SSH and in CI. The output extension picks the format — `.png` to look at
+somewhere that previews images, `.svg` to keep it sharp at any zoom and diffable
+as text — and `--format` overrides it. Both come from the same projection, so
+they always show the same thing. `--view` takes `iso`, `front`, `side` or `top`;
 the last three are exactly axis-aligned, which means a robot that is symmetric
 about a plane must project symmetrically — an asymmetry in the picture is an
 asymmetry in the robot. `--joint NAME=VALUE` is repeatable and moves the robot

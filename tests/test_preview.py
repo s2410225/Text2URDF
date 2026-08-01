@@ -8,14 +8,25 @@ it and nothing else.
 
 from __future__ import annotations
 
+import io
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import numpy as np
 import pytest
 import yourdfpy
+from PIL import Image
 
 from conftest import EXPECTED
-from urdfgen.preview import VIEWS, PreviewError, render, render_file
+from urdfgen.preview import (
+    VIEWS,
+    PreviewError,
+    format_for,
+    render,
+    render_file,
+    render_png_file,
+    save,
+)
 
 QUADRUPED = str(EXPECTED / "quadruped_a.urdf")
 LEG = str(EXPECTED / "leg_3dof_left_v1.urdf")
@@ -236,3 +247,104 @@ def test_a_robot_without_visuals_is_reported(tmp_path: Path) -> None:
     path.write_text('<robot name="bare"><link name="only"/></robot>', encoding="utf-8")
     with pytest.raises(PreviewError, match="no visual geometry"):
         render_file(str(path))
+
+
+# --- PNG output -----------------------------------------------------------
+
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def test_png_is_a_real_png() -> None:
+    data = render_png_file(QUADRUPED)
+    assert data.startswith(PNG_SIGNATURE)
+    with Image.open(io.BytesIO(data)) as image:
+        assert image.format == "PNG"
+
+
+def test_png_honours_the_requested_width() -> None:
+    with Image.open(io.BytesIO(render_png_file(QUADRUPED, width=640))) as image:
+        assert image.width == 640
+
+
+def test_png_matches_the_svg_aspect_ratio() -> None:
+    """Both backends read the same scene, so they must frame it identically."""
+    root = ET.fromstring(render_file(QUADRUPED, width=640))
+    _, _, box_width, box_height = (float(v) for v in root.attrib["viewBox"].split())
+
+    with Image.open(io.BytesIO(render_png_file(QUADRUPED, width=640))) as image:
+        assert image.height == pytest.approx(640 * box_height / box_width, abs=1)
+        assert (image.width, image.height) == (
+            int(root.attrib["width"]),
+            int(root.attrib["height"]),
+        )
+
+
+def test_png_carries_the_catalog_colours() -> None:
+    """The thighs are accent_orange; that colour has to survive to the pixels."""
+    with Image.open(io.BytesIO(render_png_file(QUADRUPED, width=400))) as image:
+        pixels = np.asarray(image.convert("RGB"), dtype=int)
+
+    red, green, blue = pixels[..., 0], pixels[..., 1], pixels[..., 2]
+    warm = ((red > 120) & (red > green + 40) & (green > blue + 10) & (blue < 110)).sum()
+    assert warm > 200, "no accent-orange region found in the render"
+
+
+def test_png_is_deterministic() -> None:
+    """Same robot, same pose, same width: byte-identical, so it can be diffed."""
+    first = render_png_file(QUADRUPED, configuration={"leg_fl_knee_pitch": -0.5})
+    second = render_png_file(QUADRUPED, configuration={"leg_fl_knee_pitch": -0.5})
+    assert first == second
+
+
+def test_png_changes_with_the_pose() -> None:
+    assert render_png_file(QUADRUPED) != render_png_file(
+        QUADRUPED, configuration={"leg_fl_knee_pitch": -1.2}
+    )
+
+
+def test_png_rejects_a_bad_joint_the_same_way_svg_does() -> None:
+    with pytest.raises(PreviewError, match="unknown or non-actuated"):
+        render_png_file(QUADRUPED, configuration={"nope": 1.0})
+
+
+def test_an_absurd_width_is_refused() -> None:
+    """A typo in --width should not try to allocate tens of gigabytes."""
+    with pytest.raises(PreviewError, match="reduce --width"):
+        render_png_file(QUADRUPED, width=100_000)
+
+
+# --- format selection -----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [("robot.png", "png"), ("robot.svg", "svg"), ("PATH/Robot.PNG", "png")],
+)
+def test_format_comes_from_the_extension(name: str, expected: str) -> None:
+    assert format_for(name) == expected
+
+
+def test_an_unknown_extension_is_refused() -> None:
+    with pytest.raises(PreviewError, match="cannot tell the format"):
+        format_for("robot.jpeg")
+
+
+def test_save_writes_the_format_the_extension_asks_for(tmp_path: Path) -> None:
+    png = tmp_path / "robot.png"
+    svg = tmp_path / "robot.svg"
+
+    assert save(QUADRUPED, png) == "png"
+    assert save(QUADRUPED, svg) == "svg"
+    assert png.read_bytes().startswith(PNG_SIGNATURE)
+    assert svg.read_text(encoding="utf-8").lstrip().startswith("<?xml")
+
+
+def test_save_can_be_overridden(tmp_path: Path) -> None:
+    output = tmp_path / "robot.svg"
+    assert save(QUADRUPED, output, fmt="png") == "png"
+    assert output.read_bytes().startswith(PNG_SIGNATURE)
+
+
+def test_save_rejects_an_unknown_format(tmp_path: Path) -> None:
+    with pytest.raises(PreviewError, match="unknown format"):
+        save(QUADRUPED, tmp_path / "robot.svg", fmt="tiff")
