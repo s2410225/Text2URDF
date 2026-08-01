@@ -282,19 +282,49 @@
   .btn[aria-pressed="true"] { border-color: var(--amber); color: var(--amber); background: #1a1208; }
 
   .joints {
-    max-height: 11rem;
+    max-height: 13rem;
     overflow-y: auto;
     border-top: 1px solid var(--rule);
     background: var(--panel);
   }
   .joint {
     display: grid;
-    grid-template-columns: 10.5rem minmax(0, 1fr) 3.4rem;
+    grid-template-columns: 13rem minmax(0, 1fr) 3.4rem;
     gap: 0.5rem;
     align-items: center;
-    padding: 0.2rem 0.75rem;
+    padding: 0.15rem 0.75rem;
   }
-  .joint label { font-size: 0.66rem; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+  /* The label carries the indent so every slider track still lines up; a
+     staircase of tracks would be far harder to compare than a staircase of
+     names. */
+  .joint label {
+    font-size: 0.66rem;
+    color: var(--dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-left: calc(var(--d, 0) * 0.55rem);
+  }
+  .joint-part {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    padding: 0.35rem 0.75rem 0.15rem;
+    padding-left: calc(0.75rem + var(--d, 0) * 0.55rem);
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    border-top: 1px solid var(--rule);
+  }
+  .joints > .joint-part:first-child { border-top: 0; }
+  .joint-part b { color: var(--amber); font-weight: 600; }
+  .joint-part .mod {
+    color: var(--dim);
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.62rem;
+  }
+  .tree { color: var(--rule-hi); margin-right: 0.3rem; }
   .joint output { font-size: 0.66rem; color: var(--cyan); font-variant-numeric: tabular-nums; text-align: right; }
   /* Twelve full-width sliders would shout louder than the machine. Thin track,
      small amber thumb: present, readable, quiet. */
@@ -454,6 +484,9 @@
         <button class="btn" id="pose-zero">Pose · Zero</button>
         <button class="btn" id="pose-crouch">Pose · Crouch</button>
         <button class="btn" id="reset">Reset unit</button>
+      </div>
+      <div class="panel-head">
+        <span>Joints · nested by what drives them</span><b id="joint-count">0</b>
       </div>
       <div class="joints" id="joints"></div>
     </div>
@@ -1132,41 +1165,101 @@ function paintParts() {
   }
 }
 
+/** The joint panel as a tree, in kinematic order.
+ *
+ * A slider moves everything downstream of it, so nesting by the chain is the
+ * honest arrangement: each joint sits under the joint that carries it, and a
+ * part bolted on partway down a limb appears under the joint it rides on.
+ * A flat list hides exactly the relationship you need when posing a machine.
+ */
+function jointRows() {
+  const rows = [];
+
+  const walkInstance = (instanceId, depth) => {
+    const instance = unit.modules.find((m) => m.id === instanceId);
+    if (!instance) return;
+    const module = MODULES.get(instance.module);
+    rows.push({ kind: "part", depth, instance: instanceId, module });
+
+    // `chain` counts the drivable joints between this link and the module's
+    // root, which is what the indent has to express.
+    const walkLink = (linkName, chain) => {
+      for (const joint of module.joints) {
+        if (joint.parent !== linkName) continue;
+        const drivable = Boolean(joint.movable && joint.limit);
+        if (drivable) {
+          rows.push({ kind: "joint", depth: depth + 1 + chain, instance: instanceId, joint });
+        }
+        walkLink(joint.child, chain + (drivable ? 1 : 0));
+      }
+      for (const c of unit.connections) {
+        if (c.parent.instance !== instanceId) continue;
+        const port = module.ports.find((p) => p.name === c.parent.port);
+        if (port && port.link === linkName) walkInstance(c.child.instance, depth + 1 + chain);
+      }
+    };
+    walkLink(module.root_link, 0);
+  };
+
+  walkInstance(unit.root, 0);
+  return rows;
+}
+
 function paintJoints() {
   const host = document.getElementById("joints");
   host.replaceChildren();
-  for (const instance of unit.modules) {
-    const module = MODULES.get(instance.module);
-    for (const joint of module.joints) {
-      if (!joint.movable || !joint.limit) continue;
-      const key = instance.id + "/" + joint.name;
-      const row = document.createElement("div");
-      row.className = "joint";
 
-      const label = document.createElement("label");
-      label.textContent = key;
-      label.htmlFor = "j-" + key;
+  const rows = jointRows();
+  let sliders = 0;
 
-      const range = document.createElement("input");
-      range.type = "range";
-      range.id = "j-" + key;
-      range.min = String(joint.limit.lower);
-      range.max = String(joint.limit.upper);
-      range.step = "0.01";
-      range.value = String(jointValues[key] || 0);
-
-      const out = document.createElement("output");
-      out.textContent = (jointValues[key] || 0).toFixed(2);
-
-      range.addEventListener("input", () => {
-        jointValues[key] = parseFloat(range.value);
-        out.textContent = jointValues[key].toFixed(2);
-        render();
-      });
-      row.append(label, range, out);
-      host.appendChild(row);
+  for (const row of rows) {
+    if (row.kind === "part") {
+      const head = document.createElement("div");
+      head.className = "joint-part";
+      head.style.setProperty("--d", row.depth);
+      const driven = row.module.joints.filter((j) => j.movable && j.limit).length;
+      head.innerHTML = `
+        <span class="tree">${row.depth ? "└" : "▪"}</span>
+        <b>${row.instance}</b>
+        <span class="mod">${row.module.id}</span>
+        <span class="mod" style="margin-left:auto">${driven || "—"} dof</span>`;
+      host.appendChild(head);
+      continue;
     }
+
+    sliders += 1;
+    const key = row.instance + "/" + row.joint.name;
+    const line = document.createElement("div");
+    line.className = "joint";
+
+    const label = document.createElement("label");
+    label.style.setProperty("--d", row.depth);
+    label.htmlFor = "j-" + key;
+    label.innerHTML = `<span class="tree">├</span>${row.joint.name}`;
+    label.title = key;
+
+    const range = document.createElement("input");
+    range.type = "range";
+    range.id = "j-" + key;
+    range.min = String(row.joint.limit.lower);
+    range.max = String(row.joint.limit.upper);
+    range.step = "0.01";
+    range.value = String(jointValues[key] || 0);
+    range.setAttribute("aria-label", key);
+
+    const out = document.createElement("output");
+    out.textContent = (jointValues[key] || 0).toFixed(2);
+
+    range.addEventListener("input", () => {
+      jointValues[key] = parseFloat(range.value);
+      out.textContent = jointValues[key].toFixed(2);
+      render();
+    });
+    line.append(label, range, out);
+    host.appendChild(line);
   }
+
+  document.getElementById("joint-count").textContent = sliders;
 }
 
 function paintSpec() {

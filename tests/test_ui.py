@@ -193,6 +193,20 @@ def test_closing_tags_in_data_cannot_break_out_of_the_script(catalog: Catalog) -
     assert "<\\/script>" in page
 
 
+def test_every_element_the_script_reaches_for_exists(catalog: Catalog) -> None:
+    """A renamed id would break a panel silently, in the browser, at runtime.
+
+    The script and the markup live in one file but nothing checks that they
+    agree, so check it here.
+    """
+    page = render_page(catalog)
+    wanted = set(re.findall(r'getElementById\("([^"]+)"\)', page))
+    assert wanted, "expected the page to look elements up by id"
+
+    declared = set(re.findall(r'\bid="([^"]+)"', page))
+    assert wanted <= declared, f"script reaches for missing ids: {sorted(wanted - declared)}"
+
+
 def test_page_uses_the_requested_title(catalog: Catalog) -> None:
     assert "<title>GARAGE</title>" in render_page(catalog, title="GARAGE")
 
