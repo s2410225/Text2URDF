@@ -10,3 +10,7 @@ build/
 
 # Generated catalog index (rebuilt from module.yaml on load; see spec 2.2)
 modules/catalog.yaml
+
+# The web app's dependencies. Its build lands in web/dist, already covered by
+# the dist/ rule above; the server falls back to instructions when it is absent.
+web/node_modules/
