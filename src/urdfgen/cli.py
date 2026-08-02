@@ -126,6 +126,17 @@ def _build_parser() -> argparse.ArgumentParser:
     ui.add_argument("--title", default=DEFAULT_TITLE, help="page title")
     ui.set_defaults(handler=_cmd_ui)
 
+    serve = subparsers.add_parser("serve", help="run the HTTP API and the web app")
+    serve.add_argument("--host", default="127.0.0.1", help="bind address (default: 127.0.0.1)")
+    serve.add_argument("--port", type=int, default=8000, help="port (default: 8000)")
+    serve.add_argument(
+        "--web",
+        type=Path,
+        default=None,
+        help="directory of the built web app (default: web/dist, served when present)",
+    )
+    serve.set_defaults(handler=_cmd_serve)
+
     preview = subparsers.add_parser("preview", help="draw a URDF as an SVG or PNG")
     preview.add_argument("urdf", type=Path, help="path to a URDF file")
     preview.add_argument(
@@ -337,6 +348,37 @@ def _cmd_ui(args: argparse.Namespace, catalog: Catalog) -> int:
     else:
         args.output.write_text(page, encoding="utf-8")
         print(f"wrote {args.output} ({len(page):,} bytes)", file=sys.stderr)
+    return EXIT_OK
+
+
+def _cmd_serve(args: argparse.Namespace, catalog: Catalog) -> int:
+    """Serve the API, and the web app alongside it when one has been built.
+
+    FastAPI and uvicorn are an optional extra, so they are imported here rather
+    than at module scope: every other command works without a web stack.
+    """
+    try:
+        import uvicorn
+
+        from urdfgen.api import create_app, default_web_root
+    except ImportError as exc:
+        print(
+            f"error: the web stack is not installed ({exc.name}). "
+            "Install it with: uv sync --extra api",
+            file=sys.stderr,
+        )
+        return EXIT_FAILED
+
+    web = args.web if args.web is not None else default_web_root()
+    if not (web / "index.html").is_file():
+        print(
+            f"note: no web app at {web}; serving the API only. "
+            "Build it with: cd web && npm install && npm run build",
+            file=sys.stderr,
+        )
+
+    print(f"serving http://{args.host}:{args.port} from {catalog.root}", file=sys.stderr)
+    uvicorn.run(create_app(catalog, web_root=web), host=args.host, port=args.port)
     return EXIT_OK
 
 

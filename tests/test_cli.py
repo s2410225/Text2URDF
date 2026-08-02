@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 import yourdfpy
+from fastapi.testclient import TestClient
 
 from conftest import SPECS
 from stub_llm import Reply, serving
@@ -184,6 +185,44 @@ def test_ui_takes_a_title(tmp_path: Path) -> None:
     output = tmp_path / "assembly.html"
     main(["ui", "-o", str(output), "--title", "GARAGE"])
     assert "<title>GARAGE</title>" in output.read_text(encoding="utf-8")
+
+
+# --- serve -----------------------------------------------------------------
+
+
+def test_serve_passes_the_bind_address_and_the_web_root_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Everything up to ``uvicorn.run``. Actually serving is uvicorn's job."""
+    import uvicorn
+
+    served: dict[str, object] = {}
+
+    def record(app: object, **kwargs: object) -> None:
+        served.update(kwargs, app=app)
+
+    monkeypatch.setattr(uvicorn, "run", record)
+
+    site = tmp_path / "dist"
+    site.mkdir()
+    (site / "index.html").write_text("<title>web</title>", encoding="utf-8")
+
+    assert main(["serve", "--host", "0.0.0.0", "--port", "9001", "--web", str(site)]) == EXIT_OK
+    assert served["host"] == "0.0.0.0"
+    assert served["port"] == 9001
+
+    with TestClient(served["app"]) as client:  # type: ignore[arg-type]
+        assert client.get("/api/health").json()["web_app"] is True
+
+
+def test_serve_says_so_when_no_web_app_has_been_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import uvicorn
+
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: None)
+    assert main(["serve", "--web", str(tmp_path / "absent")]) == EXIT_OK
+    assert "npm run build" in capsys.readouterr().err
 
 
 # --- preview ---------------------------------------------------------------

@@ -19,6 +19,14 @@ dependencies = [
     "pillow>=10.1",
 ]
 
+[project.optional-dependencies]
+# The HTTP API and the web app it serves. Kept optional so the catalog, the
+# builder and the CLI stay installable without a web stack.
+api = [
+    "fastapi>=0.111",
+    "uvicorn>=0.30",
+]
+
 [project.scripts]
 urdfgen = "urdfgen.cli:main"
 
@@ -28,6 +36,10 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "types-PyYAML>=6.0",
+    # The API is tested through FastAPI's TestClient, so the extra is always
+    # present for development even though it is optional to install.
+    "fastapi>=0.111",
+    "uvicorn>=0.30",
 ]
 
 [build-system]
