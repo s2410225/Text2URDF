@@ -33,3 +33,32 @@ jobs:
 
       - name: Test
         run: uv run pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Type check
+        working-directory: web
+        run: npm run check
+
+      - name: Test
+        working-directory: web
+        run: npm test
+
+      # The build is a check too: the app has to compile before the server can
+      # serve it, and a broken build is invisible until someone runs `serve`.
+      - name: Build
+        working-directory: web
+        run: npm run build

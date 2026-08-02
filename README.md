@@ -41,12 +41,13 @@ environment variable at them.
 | 1 | Expansion engine (transforms, namespacing, multi-module assembly) | implemented |
 | 2 | Validation layer | implemented |
 | 3 | Assembly layer (local LLM, two-stage generation, repair loop) | implemented |
-| 4 | Web UI | partial — a generated assembly page, no React yet |
+| 4 | Web UI (HTTP API, React + three.js assembly screen) | implemented |
 | 5 | Advanced features (tree editing, ROS 2 export, catalog search) | not started |
 
-Everything except the web UI works from the command line today. Phases 0–2 need
-nothing but Python; phase 3 needs a local model running somewhere.
-`src/urdfgen/api/`, `builder/ros_package.py` and `web/` arrive in phases 4–5.
+Everything works from the command line. Phases 0–2 need nothing but Python;
+phase 3 needs a local model running somewhere; phase 4 adds a server and a
+browser app on top, and neither is required to use the rest.
+`builder/ros_package.py` arrives in phase 5.
 
 Mirroring (`ModuleInstance.mirror`) and parametric modules
 (`ModuleDef.parameters`) are listed under phase 5 in the spec, but the fields
@@ -83,7 +84,17 @@ src/urdfgen/
   preview/raster.py           scene to PNG
   ui/page.py                  generates the standalone assembly screen
   ui/assets/assembly.html     its template
+  api/app.py                  the HTTP API: catalog, validate, build, assemble
+  api/models.py               its request and response bodies
   cli.py
+web/
+  src/api.ts                  the typed client for that API
+  src/catalog.ts              the payload and AssemblySpec types
+  src/assembly.ts             the equip-time rules, the only ones decided here
+  src/scene.ts                the assembly as a three.js scene graph
+  src/Viewer.tsx              the viewport
+  src/App.tsx                 the screen
+  src/panels.tsx              the panels around it
 tests/
   stub_llm.py                 an OpenAI-compatible stub server
   fixtures/modules/           minimal catalog for edge cases
@@ -133,13 +144,15 @@ the last three are exactly axis-aligned, which means a robot that is symmetric
 about a plane must project symmetrically — an asymmetry in the picture is an
 asymmetry in the robot. `--joint NAME=VALUE` is repeatable and moves the robot
 into a pose, which is the fastest way to check that an assembly articulates the
-way it should. This is a complement to the interactive three.js viewer coming
-in phase 4, not a replacement for it.
+way it should. It complements the interactive three.js viewer below rather than
+competing with it: this one needs no browser and no GPU, which is what makes it
+usable from a script.
 
 The assembly screen — pick a hardpoint, fit a part, watch the numbers move:
 
 ```bash
-uv run urdfgen ui -o assembly.html   # then open it
+uv run urdfgen ui -o assembly.html   # one file, no server
+uv run urdfgen serve                 # the React app and the API
 ```
 
 These need a local model (see below):
@@ -189,9 +202,62 @@ equip-time rules — interface, role, port occupancy — because those have to b
 interactive. Mass, inertia, interference and the URDF round trip stay in Python;
 copy the spec out and run `urdfgen validate` on it.
 
-This is the phase 4 web UI in a form that works today. The React and three.js
-viewer the spec describes will supersede it, and the catalog payload it consumes
-(`urdfgen`'s `catalog_payload`) is the shape `GET /api/catalog` will return.
+It is the same screen as the web app below, minus everything that needs a
+server. Keep it for the case it was written for: one file you can mail, open
+from a `file://` URL, or publish, with no install and no process running.
+
+## The web app
+
+The phase 4 UI: the same garage, with the server behind it.
+
+```bash
+uv sync --extra api                     # FastAPI and uvicorn are optional
+cd web && npm install && npm run build  # once, and after any change to web/
+uv run urdfgen serve                    # http://127.0.0.1:8000
+```
+
+`serve` runs the API and, when a build exists, the app at the same origin.
+Without a build it serves the API alone and says how to make one. For frontend
+work, `npm run dev` proxies `/api` to port 8000, so the two halves share an
+origin in development exactly as they do in production.
+
+What the server adds is the difference between this and the standalone page:
+
+* **The equip check is the validation layer**, not an impression of it. Every
+  edit is sent to `POST /api/validate` and what comes back is
+  `urdfgen validate`'s own findings — catalog, connections, mass properties,
+  interference, the URDF round trip.
+* **Build URDF is the builder.** `POST /api/build` expands the spec and returns
+  XML that is byte for byte what `urdfgen build` writes; a test pins that. The
+  browser downloads it. It never assembles XML itself.
+* **Describe it** sends a sentence to `POST /api/assemble` and drops the result
+  into the screen to edit. The panel says `offline` when no model is configured,
+  rather than failing when you press it.
+
+One rule is still decided in the browser: whether the part under the cursor fits
+the selected hardpoint. That has to be interactive, so it lives in
+`web/src/assembly.ts` with its own tests, and it is the whole of what the client
+decides.
+
+| Route | |
+|---|---|
+| `GET /api/health` | catalog size, payload version, whether a model is configured |
+| `GET /api/catalog` | every module, with the geometry and port frames to draw it |
+| `GET /api/assembly/default` | the unit the screen opens on |
+| `POST /api/validate` | the validation layer's findings; a broken assembly is a 200 |
+| `POST /api/build` | URDF, plus a summary and the report; 422 when validation failed |
+| `POST /api/assemble` | text → `AssemblySpec` through the local model; 503 without one |
+
+```bash
+cd web
+npm run check   # tsc
+npm test        # the equip-time rules
+npm run build
+```
+
+The bundle is ~760 kB, nearly all of it three.js. That is fine for a tool you
+run against your own machine and the reason the standalone page exists for
+everything else.
 
 ## Running a local model
 
@@ -321,6 +387,8 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy
 uv run pytest -q
+
+cd web && npm run check && npm test && npm run build
 ```
 
 The whole suite runs without a model. Tests of the assembly layer start a small
