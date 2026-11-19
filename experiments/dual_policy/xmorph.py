@@ -37,6 +37,7 @@ from pathlib import Path
 
 import numpy as np
 
+import kp_env
 import morph
 from dpl import MLP, gae
 
@@ -84,10 +85,14 @@ def logp_gauss(a, mu, log_std):
     return -0.5 * (z**2).sum(-1) - log_std.sum() - 0.5 * len(log_std) * LOG2PI
 
 
+def factory(space):
+    return kp_env.make if space == "keypoint" else morph.make
+
+
 class Body:
-    def __init__(self, name, n_envs, seed):
+    def __init__(self, name, n_envs, seed, make):
         self.name = name
-        self.envs = [morph.make(name) for _ in range(n_envs)]
+        self.envs = [make(name) for _ in range(n_envs)]
         self.obs = np.stack([e.reset(seed=seed + i)[0] for i, e in enumerate(self.envs)])
         self.ep_ret, self.finished = np.zeros(n_envs), []
         self.disc, self.rn = np.zeros(n_envs), RunningNorm(1)
@@ -112,8 +117,8 @@ class Body:
         return np.clip(rews / np.sqrt(self.rn.var[0] + 1e-8), -10, 10), dones
 
 
-def evaluate(agent, body_name, episodes, seed):
-    env = morph.make(body_name)
+def evaluate(agent, body_name, episodes, seed, make):
+    env = make(body_name)
     rets, dist = [], []
     for k in range(episodes):
         o, _ = env.reset(seed=50_000 + 97 * seed + k)
@@ -130,8 +135,11 @@ def evaluate(agent, body_name, episodes, seed):
 
 def train(cfg):
     rng = np.random.default_rng(cfg.seed)
-    bodies = [Body(b, cfg.num_envs, cfg.seed * 1000 + 100 * k) for k, b in enumerate(BODIES)]
-    obs_dim, act_dim = bodies[0].obs.shape[1], 8
+    make = factory(cfg.space)
+    bodies = [Body(b, cfg.num_envs, cfg.seed * 1000 + 100 * k, make) for k, b in enumerate(BODIES)]
+    obs_dim = bodies[0].obs.shape[1]
+    act_dim = bodies[0].envs[0].action_space.shape[0]
+    assert all(b.obs.shape[1] == obs_dim and b.envs[0].action_space.shape[0] == act_dim for b in bodies)
     agents = [GaussAgent(obs_dim, act_dim, rng, cfg.lr) for _ in BODIES]
     T, N = cfg.num_steps, cfg.num_envs
     n_updates = cfg.total_steps // (T * N)
@@ -233,7 +241,7 @@ def train(cfg):
         if (upd + 1) % cfg.eval_every == 0 or upd == n_updates - 1:
             log["eval_steps"].append(step)
             for k, b in enumerate(BODIES):
-                r, dx = evaluate(agents[k], b, cfg.eval_eps, cfg.seed)
+                r, dx = evaluate(agents[k], b, cfg.eval_eps, cfg.seed, make)
                 log[f"eval_{b}"].append(r)
                 log[f"dx_{b}"].append(dx)
             print(f"{cfg.mode} s{cfg.seed} {step:>8d}  radial {log['ret_radial'][-1]:7.1f} "
@@ -241,7 +249,7 @@ def train(cfg):
                   f"({time.time() - t0:.0f}s)", flush=True)
 
     # ---------------- zero-shot cross-play: each policy driving the other body
-    log["cross"] = {f"{BODIES[i]}_policy_on_{BODIES[j]}": evaluate(agents[i], BODIES[j], cfg.eval_eps, cfg.seed)
+    log["cross"] = {f"{BODIES[i]}_policy_on_{BODIES[j]}": evaluate(agents[i], BODIES[j], cfg.eval_eps, cfg.seed, make)
                     for i in range(2) for j in range(2)}
     log["time"] = time.time() - t0
     log["config"] = vars(cfg)
@@ -252,6 +260,9 @@ def parse(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--mode", default="better", choices=["indep", "mutual", "better", "better_q"])
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--space", default="joint", choices=["joint", "keypoint"],
+                   help="joint: same joint tree, joint-space actions (morph.py); "
+                        "keypoint: different joint structures, foot-target actions (kp_env.py)")
     p.add_argument("--total-steps", type=int, default=1_000_000, help="per body")
     p.add_argument("--num-envs", type=int, default=4)
     p.add_argument("--num-steps", type=int, default=512)
