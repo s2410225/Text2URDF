@@ -165,6 +165,19 @@ class Envs:
         self.ep_ret = np.zeros(n)
         self.ep_len = np.zeros(n, dtype=int)
         self.finished = []  # (ep_return)
+        # running std of the discounted return, for reward scaling
+        self.disc = np.zeros(n)
+        self.count, self.mean, self.var = 1e-4, 0.0, 1.0
+
+    def scale(self, r, dones, gamma):
+        self.disc = self.disc * gamma + r
+        b_mean, b_var, b_n = self.disc.mean(), self.disc.var(), len(r)
+        delta, tot = b_mean - self.mean, self.count + b_n
+        self.mean += delta * b_n / tot
+        self.var = (self.var * self.count + b_var * b_n + delta**2 * self.count * b_n / tot) / tot
+        self.count = tot
+        self.disc[dones > 0] = 0.0
+        return np.clip(r / np.sqrt(self.var + 1e-8), -10, 10)
 
     def step(self, actions):
         rews, dones = np.zeros(len(self.envs)), np.zeros(len(self.envs))
@@ -273,6 +286,8 @@ def train(cfg):
                 O[t], A[t], LP[t] = o, a, lp[np.arange(per), a]
                 V[t] = ag.value(o)
                 r, d = env.step(a)
+                if cfg.norm_reward:
+                    r = env.scale(r, d, cfg.gamma)
                 R[t], D[t] = r, d
             last_v = ag.value(env.obs.astype(np.float64))
             rollouts.append(dict(O=O, A=A, LP=LP, R=R, D=D, V=V, last_v=last_v))
@@ -403,6 +418,7 @@ def parse(argv=None):
     p.add_argument("--beta", type=float, default=0.1, help="intrinsic reward scale (disagree)")
     p.add_argument("--kappa", type=float, default=0.5, help="surprise gate strength (pred_gate)")
     p.add_argument("--pred-lr-mult", type=float, default=0.5, help="predictor lr relative to actor")
+    p.add_argument("--norm-reward", type=int, default=1)
     p.add_argument("--eval-every", type=int, default=10)
     p.add_argument("--eval-eps", type=int, default=5)
     p.add_argument("--out", default=None)
