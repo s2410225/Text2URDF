@@ -15,10 +15,19 @@ is different: the hip/ankle axes point in different world directions.
 """
 
 import os
+import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import gymnasium as gym
+
+def _atomic_write(path, text):
+    """Write via a temp file + rename so parallel workers never see a partial file."""
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".xml")
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
 
 ANT_XML = Path(os.path.dirname(gym.__file__)) / "envs/mujoco/assets/ant.xml"
 OUT_DIR = Path(__file__).parent / "assets"
@@ -44,7 +53,7 @@ def bilateral_xml() -> str:
         b = torso.find(f"body[@name='{name}']")
         b.set("pos", f"{x} {y} 0")
         b.set("euler", f"0 0 {rot}")
-    tree.write(path)
+    _atomic_write(path, ET.tostring(tree.getroot(), encoding="unicode"))
     return str(path)
 
 
@@ -70,3 +79,4 @@ if __name__ == "__main__":
             o, r, te, tr, _ = e.step(np.zeros(8))
             R += r
         print("  zero-action 200 steps return", round(R, 1), "z", round(e.unwrapped.data.qpos[2], 3))
+

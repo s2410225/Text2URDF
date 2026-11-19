@@ -30,12 +30,21 @@ Reward is identical for both: forward (+x) velocity + 1 (alive)
 from __future__ import annotations
 
 import os
+import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import gymnasium as gym
 import mujoco
 import numpy as np
+
+def _atomic_write(path, text):
+    """Write via a temp file + rename so parallel workers never see a partial file."""
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".xml")
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
 
 ASSETS = Path(__file__).parent / "assets"
 ANT_XML = Path(os.path.dirname(gym.__file__)) / "envs/mujoco/assets/ant.xml"
@@ -84,7 +93,7 @@ def build_bilateral() -> str:
         f'<motor ctrllimited="true" ctrlrange="-1 1" joint="{n}_{j}" gear="100"/>'
         for n in FEET for j in ("abd", "pitch", "knee"))
     p = ASSETS / "quad_bilateral_kp.xml"
-    p.write_text(BILATERAL_XML.format(legs=legs, motors=motors))
+    _atomic_write(p, BILATERAL_XML.format(legs=legs, motors=motors))
     return str(p)
 
 
@@ -99,7 +108,7 @@ def build_radial() -> str:
         tip = ankle.find("geom").get("fromto").split()[3:]
         ET.SubElement(ankle, "site", {"name": f"foot_{name}", "pos": " ".join(tip), "size": "0.02"})
     p = ASSETS / "ant_radial_kp.xml"
-    tree.write(p)
+    _atomic_write(p, ET.tostring(tree.getroot(), encoding="unicode"))
     return str(p)
 
 
@@ -226,3 +235,4 @@ if __name__ == "__main__":
                 print("  trot fell at", t)
                 break
         print(f"  open-loop trot: x {info['x']:.2f}")
+
